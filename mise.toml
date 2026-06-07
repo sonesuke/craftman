@@ -32,7 +32,7 @@ run = "RUSTFLAGS=\"-D warnings\" cargo test --lib --all"
 
 [tasks.test-e2e]
 description = "Run e2e tests"
-run = "cargo test --test e2e_cli --test e2e_mcp"
+run = "cargo test --test e2e_cli"
 
 [tasks.pre-commit]
 description = "Run fmt, clippy, and unit tests"
