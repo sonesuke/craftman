@@ -1,7 +1,11 @@
 use assert_cmd::Command;
 
 #[test]
-fn test_hello_world() {
+fn test_help_shows_options() {
     let mut cmd = Command::cargo_bin("craftman").unwrap();
-    cmd.assert().success().stdout("Hello, world!\n");
+    cmd.arg("--help")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("--model"))
+        .stdout(predicates::str::contains("--url"));
 }

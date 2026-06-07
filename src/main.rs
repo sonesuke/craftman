@@ -1,5 +1,29 @@
-use craftman::greet;
+use clap::Parser;
 
-fn main() {
-    println!("{}", greet());
+use craftman::app::chat;
+
+#[derive(Parser)]
+#[command(
+    name = "craftman",
+    version,
+    about = "A CLI assistant powered by local LLMs"
+)]
+struct Cli {
+    /// Ollama model to use
+    #[arg(long, default_value = "LiquidAI/lfm2.5-1.2b-instruct")]
+    model: String,
+
+    /// Ollama base URL
+    #[arg(long, default_value = "http://host.docker.internal:11434")]
+    url: String,
+}
+
+#[tokio::main]
+async fn main() {
+    let cli = Cli::parse();
+
+    if let Err(e) = chat::run(&cli.url, &cli.model).await {
+        eprintln!("Error: {e:#}");
+        std::process::exit(1);
+    }
 }

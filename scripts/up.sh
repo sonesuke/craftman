@@ -5,6 +5,7 @@ docker run -d \
   --name craftman \
   -v "$(pwd):/workspaces/craftman" \
   -v "${HOME}/.config/gh:/home/user/.config/gh" \
+  --add-host=host.docker.internal:host-gateway \
   -e Z_AI_API_KEY="${Z_AI_API_KEY}" \
   craftman:latest \
   sleep infinity
