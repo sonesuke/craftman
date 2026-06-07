@@ -161,7 +161,8 @@ async fn send_turn(
         // Handle tool calls
         eprintln!();
         for (id, name, arguments) in &tool_calls {
-            eprintln!("{ANSI_DIM}[tool call: {name}]{ANSI_RESET}");
+            let skill_name = arguments["name"].as_str().unwrap_or("");
+            eprintln!("{ANSI_DIM}[load_skill: {skill_name}]{ANSI_RESET}");
 
             history.push(InputItem::ToolCall {
                 id: id.clone(),
