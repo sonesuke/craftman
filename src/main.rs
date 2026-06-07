@@ -22,13 +22,17 @@ struct Cli {
     /// Directory containing skill definitions (SKILL.md)
     #[arg(long, default_value = "./skills")]
     skills_dir: PathBuf,
+
+    /// Log all LLM request/response JSON to this file (JSONL format)
+    #[arg(long)]
+    log: Option<PathBuf>,
 }
 
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
 
-    if let Err(e) = chat::run(&cli.url, &cli.model, &cli.skills_dir).await {
+    if let Err(e) = chat::run(&cli.url, &cli.model, &cli.skills_dir, cli.log.as_deref()).await {
         eprintln!("Error: {e:#}");
         std::process::exit(1);
     }

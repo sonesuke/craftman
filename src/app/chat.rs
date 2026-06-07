@@ -11,8 +11,11 @@ const ANSI_DIM: &str = "\x1b[2m";
 const ANSI_RESET: &str = "\x1b[0m";
 
 /// Run an interactive chat REPL against the given Ollama backend.
-pub async fn run(url: &str, model: &str, skills_dir: &Path) -> Result<()> {
-    let backend = OllamaBackend::new(url, model);
+pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Path>) -> Result<()> {
+    let mut backend = OllamaBackend::new(url, model);
+    if let Some(path) = log_file {
+        backend.with_log_file(path);
+    }
 
     let mut registry = SkillRegistry::new();
     registry.load_from_dir(skills_dir)?;
