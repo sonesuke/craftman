@@ -40,6 +40,8 @@ enum OllamaInputItem {
     #[serde(rename = "function_call")]
     ToolCall {
         id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        call_id: Option<String>,
         name: String,
         arguments: serde_json::Value,
     },
@@ -217,10 +219,12 @@ fn to_ollama_input(items: &[InputItem]) -> Vec<OllamaInputItem> {
             },
             InputItem::ToolCall {
                 id,
+                call_id,
                 name,
                 arguments,
             } => OllamaInputItem::ToolCall {
                 id: id.clone(),
+                call_id: call_id.clone(),
                 name: name.clone(),
                 arguments: arguments.clone(),
             },

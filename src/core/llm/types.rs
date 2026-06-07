@@ -31,6 +31,8 @@ pub enum InputItem {
     #[serde(rename = "function_call")]
     ToolCall {
         id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        call_id: Option<String>,
         name: String,
         arguments: serde_json::Value,
     },

@@ -167,6 +167,7 @@ async fn send_turn(
 
             history.push(InputItem::ToolCall {
                 id: call_id.clone().unwrap_or_default(),
+                call_id: call_id.clone(),
                 name: name.clone(),
                 arguments: arguments.clone(),
             });

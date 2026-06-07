@@ -16,4 +16,5 @@ tokio = { version = "1", features = ["rt", "macros", "io-std", "rt-multi-thread"
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
+tempfile = "3"
 tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }
