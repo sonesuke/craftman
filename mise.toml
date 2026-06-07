@@ -1,0 +1,48 @@
+[tasks.build]
+description = "Build dev container image with nix"
+file = "scripts/build.sh"
+
+[tasks.up]
+description = "Start dev container"
+file = "scripts/up.sh"
+
+[tasks.down]
+description = "Stop and remove dev container"
+run = "docker stop craftman && docker rm craftman"
+
+[tasks.attach]
+description = "Attach to dev container"
+run = "docker exec -it -w /workspaces/craftman craftman /bin/zsh"
+
+[tasks.setup]
+description = "Setup environment inside running container (Rust, Claude CLI, etc.)"
+run = "docker exec -u 1000 craftman bash /workspaces/craftman/scripts/setup.sh"
+
+[tasks.fmt]
+description = "Check formatting with cargo fmt"
+run = "cargo fmt --all -- --check"
+
+[tasks.clippy]
+description = "Lint with cargo clippy"
+run = "cargo clippy --all-targets -- -D warnings"
+
+[tasks.test]
+description = "Run unit tests"
+run = "RUSTFLAGS=\"-D warnings\" cargo test --lib --all"
+
+[tasks.test-e2e]
+description = "Run e2e tests"
+run = "cargo test --test e2e_cli --test e2e_mcp"
+
+[tasks.pre-commit]
+description = "Run fmt, clippy, and unit tests"
+depends = ["fmt", "clippy", "test"]
+
+[tasks.coverage]
+description = "Generate test coverage report"
+run = """
+eval "$(cargo llvm-cov show-env --sh)"
+cargo llvm-cov clean --workspace
+cargo test
+cargo llvm-cov report --summary-only
+"""
