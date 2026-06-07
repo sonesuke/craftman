@@ -1,7 +1,6 @@
 pub mod app;
 pub mod backends;
 pub mod core;
-pub mod skills;
 
 // ---------------------------------------------------------------------------
 // Convenience re-exports

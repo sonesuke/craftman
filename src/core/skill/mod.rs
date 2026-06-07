@@ -5,27 +5,19 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Result, anyhow};
-use async_trait::async_trait;
 
 pub use loader::{load_skill, load_skills_from_dir};
 pub use types::{Skill, SkillManifest};
 
 use crate::core::llm::ToolDefinition;
 
-/// A skill executor backed by Rust code.
-#[async_trait]
-pub trait SkillExecutor: Send + Sync {
-    /// The skill name (must match the SKILL.md `name` field).
-    fn name(&self) -> &str;
-
-    /// Execute the skill with the given JSON arguments and return a text result.
-    async fn execute(&self, arguments: serde_json::Value) -> Result<String>;
-}
-
-/// Registry of loaded skill definitions paired with their executors.
+/// Registry of loaded skill definitions.
+///
+/// Implements the Agent Skills progressive disclosure pattern:
+/// 1. **Discovery**: skill names + descriptions loaded at startup
+/// 2. **Activation**: `load_skill` tool returns full instructions on demand
 pub struct SkillRegistry {
     skills: HashMap<String, Skill>,
-    executors: HashMap<String, Box<dyn SkillExecutor>>,
 }
 
 impl Default for SkillRegistry {
@@ -38,13 +30,10 @@ impl SkillRegistry {
     pub fn new() -> Self {
         Self {
             skills: HashMap::new(),
-            executors: HashMap::new(),
         }
     }
 
-    /// Load skills from a directory and register them (without executors).
-    ///
-    /// Executors must be registered separately via [`Self::register_executor`].
+    /// Load skills from a directory (discovery phase).
     pub fn load_from_dir(&mut self, dir: &Path) -> Result<()> {
         let skills = loader::load_skills_from_dir(dir)?;
         for skill in skills {
@@ -54,51 +43,44 @@ impl SkillRegistry {
         Ok(())
     }
 
-    /// Register a Rust-backed executor for a skill.
-    pub fn register_executor(&mut self, executor: Box<dyn SkillExecutor>) {
-        self.executors.insert(executor.name().to_string(), executor);
+    /// Build a description string listing all available skills for the load_skill tool.
+    fn skills_summary(&self) -> String {
+        let mut summary =
+            String::from("Load a skill's instructions by name.\n\nAvailable skills:\n");
+        let mut names: Vec<&String> = self.skills.keys().collect();
+        names.sort();
+        for name in names {
+            let skill = &self.skills[name];
+            summary.push_str(&format!("- {}: {}\n", name, skill.manifest.description));
+        }
+        summary
     }
 
-    /// Convert all loaded skills to LLM tool definitions.
-    pub fn get_tool_definitions(&self) -> Vec<ToolDefinition> {
-        self.skills
-            .values()
-            .map(|skill| {
-                let parameters = if skill.instructions.is_empty() {
-                    serde_json::json!({
-                        "type": "object",
-                        "properties": {},
-                    })
-                } else {
-                    serde_json::json!({
-                        "type": "object",
-                        "description": skill.instructions,
-                        "properties": {},
-                    })
-                };
-
-                ToolDefinition {
-                    name: skill.manifest.name.clone(),
-                    description: skill.manifest.description.clone(),
-                    parameters,
-                }
-            })
-            .collect()
+    /// Return the `load_skill` tool definition for the LLM.
+    pub fn load_skill_tool_definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "load_skill".to_string(),
+            description: self.skills_summary(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the skill to load"
+                    }
+                },
+                "required": ["name"]
+            }),
+        }
     }
 
-    /// Execute a skill by name.
-    pub async fn execute(&self, name: &str, arguments: serde_json::Value) -> Result<String> {
-        let executor = self
-            .executors
+    /// Activate a skill by name, returning its full instructions.
+    pub fn activate(&self, name: &str) -> Result<&str> {
+        let skill = self
+            .skills
             .get(name)
-            .ok_or_else(|| anyhow!("No executor registered for skill: {name}"))?;
-
-        executor.execute(arguments).await
-    }
-
-    /// Check if a skill executor is registered.
-    pub fn has_executor(&self, name: &str) -> bool {
-        self.executors.contains_key(name)
+            .ok_or_else(|| anyhow!("Unknown skill: {name}"))?;
+        Ok(&skill.instructions)
     }
 
     /// List loaded skill names.
@@ -106,5 +88,10 @@ impl SkillRegistry {
         let mut names: Vec<&str> = self.skills.keys().map(|s| s.as_str()).collect();
         names.sort();
         names
+    }
+
+    /// Check if a skill is registered.
+    pub fn has_skill(&self, name: &str) -> bool {
+        self.skills.contains_key(name)
     }
 }
