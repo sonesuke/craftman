@@ -33,7 +33,24 @@ struct OllamaResponseRequest {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum OllamaInputItem {
-    Message { role: String, content: String },
+    Message {
+        role: String,
+        content: String,
+    },
+    #[serde(rename = "function_call")]
+    ToolCall {
+        id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        call_id: Option<String>,
+        name: String,
+        #[serde(serialize_with = "serialize_value_as_json_string")]
+        arguments: serde_json::Value,
+    },
+    #[serde(rename = "function_call_output")]
+    ToolResult {
+        call_id: String,
+        output: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -76,7 +93,10 @@ enum OllamaOutputItem {
     #[serde(rename = "function_call")]
     ToolCall {
         id: String,
+        #[serde(default)]
+        call_id: Option<String>,
         name: String,
+        #[serde(deserialize_with = "deserialize_json_or_string")]
         arguments: serde_json::Value,
     },
     Reasoning {
@@ -141,6 +161,46 @@ struct SseCompleted {
 }
 
 // ---------------------------------------------------------------------------
+// Deserializer helpers
+// ---------------------------------------------------------------------------
+
+/// Deserialize a field that may be a JSON object or a JSON-encoded string.
+///
+/// Ollama returns tool call `arguments` as a JSON string (`"{\"name\":\"x\"}"`)
+/// while the OpenAI spec uses a JSON object. This handles both.
+fn deserialize_json_or_string<'de, D>(de: D) -> std::result::Result<serde_json::Value, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    let value = serde_json::Value::deserialize(de)?;
+    match &value {
+        serde_json::Value::String(s) => serde_json::from_str(s)
+            .map_err(|e| de::Error::custom(format!("invalid JSON in arguments string: {e}"))),
+        _ => Ok(value),
+    }
+}
+
+/// Serialize a serde_json::Value as a JSON string (not a JSON object).
+///
+/// Ollama requires `arguments` in function_call input items to be a string,
+/// e.g. `"{\"name\":\"calculator\"}"` rather than `{"name":"calculator"}`.
+fn serialize_value_as_json_string<S>(
+    value: &serde_json::Value,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    // If it's already a string, send as-is; otherwise serialize to a JSON string
+    match value {
+        serde_json::Value::String(s) => serializer.serialize_str(s),
+        _ => serializer.serialize_str(&value.to_string()),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Mapping helpers
 // ---------------------------------------------------------------------------
 
@@ -175,6 +235,21 @@ fn to_ollama_input(items: &[InputItem]) -> Vec<OllamaInputItem> {
             InputItem::Message { role, content } => OllamaInputItem::Message {
                 role: role_to_str(role).to_string(),
                 content: content.clone(),
+            },
+            InputItem::ToolCall {
+                id,
+                call_id,
+                name,
+                arguments,
+            } => OllamaInputItem::ToolCall {
+                id: id.clone(),
+                call_id: call_id.clone(),
+                name: name.clone(),
+                arguments: arguments.clone(),
+            },
+            InputItem::ToolResult { call_id, output } => OllamaInputItem::ToolResult {
+                call_id: call_id.clone(),
+                output: output.clone(),
             },
         })
         .collect()
@@ -216,10 +291,12 @@ fn from_ollama_output(items: Vec<OllamaOutputItem>) -> Vec<OutputItem> {
             },
             OllamaOutputItem::ToolCall {
                 id,
+                call_id,
                 name,
                 arguments,
             } => OutputItem::ToolCall {
                 id,
+                call_id,
                 name,
                 arguments,
             },
@@ -250,6 +327,7 @@ pub struct OllamaBackend {
     client: reqwest::Client,
     base_url: String,
     model: String,
+    log_file: Option<std::path::PathBuf>,
 }
 
 impl OllamaBackend {
@@ -258,6 +336,7 @@ impl OllamaBackend {
             client: reqwest::Client::new(),
             base_url: base_url.into(),
             model: model.into(),
+            log_file: None,
         }
     }
 
@@ -268,6 +347,38 @@ impl OllamaBackend {
     /// `new("http://localhost:11434", model)` instead.
     pub fn with_default_config(model: impl Into<String>) -> Self {
         Self::new("http://host.docker.internal:11434", model)
+    }
+
+    /// Set a JSONL log file to record all request/response exchanges.
+    pub fn with_log_file(&mut self, path: impl Into<std::path::PathBuf>) {
+        self.log_file = Some(path.into());
+    }
+
+    /// Append a JSONL entry to the log file (if configured).
+    fn log_exchange(&self, direction: &str, payload: &serde_json::Value) {
+        use std::io::Write;
+        use std::time::SystemTime;
+
+        let Some(path) = &self.log_file else { return };
+
+        let ts = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let entry = serde_json::json!({
+            "ts": ts,
+            "direction": direction,
+            "payload": payload,
+        });
+
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = writeln!(f, "{}", entry);
+        }
     }
 
     /// Stream a response, calling `on_event` for each SSE event.
@@ -298,10 +409,22 @@ impl OllamaBackend {
         };
 
         let url = format!("{}/v1/responses", self.base_url);
+
+        self.log_exchange(
+            "request",
+            &serde_json::json!({"method": "POST", "url": &url, "body": &ollama_req}),
+        );
+
         let resp = self.client.post(&url).json(&ollama_req).send().await?;
 
         if !resp.status().is_success() {
-            anyhow::bail!("Ollama streaming request failed: HTTP {}", resp.status());
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            self.log_exchange(
+                "response",
+                &serde_json::json!({"status": status.as_u16(), "body": &body}),
+            );
+            anyhow::bail!("Ollama streaming request failed: HTTP {status}\n{body}");
         }
 
         let mut buffer = String::new();
@@ -361,6 +484,10 @@ impl OllamaBackend {
                             };
 
                             on_event(StreamEvent::Done(output.clone()));
+                            self.log_exchange(
+                                "response",
+                                &serde_json::json!({"status": 200, "event": "response.completed", "body": data_str}),
+                            );
                             final_output = Some(output);
                         }
                     }
@@ -395,13 +522,31 @@ impl ResponseModel for OllamaBackend {
         };
 
         let url = format!("{}/v1/responses", self.base_url);
+
+        self.log_exchange(
+            "request",
+            &serde_json::json!({"method": "POST", "url": &url, "body": &ollama_req}),
+        );
+
         let resp = self.client.post(&url).json(&ollama_req).send().await?;
 
         if !resp.status().is_success() {
-            anyhow::bail!("Ollama responses request failed: HTTP {}", resp.status());
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            self.log_exchange(
+                "response",
+                &serde_json::json!({"status": status.as_u16(), "body": &body}),
+            );
+            anyhow::bail!("Ollama responses request failed: HTTP {status}\n{body}");
         }
 
-        let ollama_resp: OllamaResponseOutput = resp.json().await?;
+        let resp_text = resp.text().await?;
+        self.log_exchange(
+            "response",
+            &serde_json::json!({"status": 200, "body": resp_text.as_str()}),
+        );
+
+        let ollama_resp: OllamaResponseOutput = serde_json::from_str(&resp_text)?;
 
         let input_tokens = ollama_resp.usage.input_tokens.unwrap_or(0) as u32;
         let output_tokens = ollama_resp.usage.output_tokens.unwrap_or(0) as u32;
@@ -430,13 +575,31 @@ impl EmbeddingModel for OllamaBackend {
         };
 
         let url = format!("{}/api/embed", self.base_url);
+
+        self.log_exchange(
+            "request",
+            &serde_json::json!({"method": "POST", "url": &url, "body": &ollama_req}),
+        );
+
         let resp = self.client.post(&url).json(&ollama_req).send().await?;
 
         if !resp.status().is_success() {
-            anyhow::bail!("Ollama embed request failed: HTTP {}", resp.status());
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            self.log_exchange(
+                "response",
+                &serde_json::json!({"status": status.as_u16(), "body": &body}),
+            );
+            anyhow::bail!("Ollama embed request failed: HTTP {status}\n{body}");
         }
 
-        let ollama_resp: OllamaEmbedResponse = resp.json().await?;
+        let resp_text = resp.text().await?;
+        self.log_exchange(
+            "response",
+            &serde_json::json!({"status": 200, "body": resp_text.as_str()}),
+        );
+
+        let ollama_resp: OllamaEmbedResponse = serde_json::from_str(&resp_text)?;
 
         let input_tokens = ollama_resp.prompt_eval_count.unwrap_or(0) as u32;
 

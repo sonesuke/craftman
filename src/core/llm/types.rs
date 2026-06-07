@@ -19,12 +19,28 @@ pub enum Role {
 
 /// An input item for a Responses API request.
 ///
-/// Can be a simple text message, or extended in the future with
-/// file attachments, images, etc.
+/// Can be a simple text message, a tool call from the assistant, or a
+/// tool result to feed back to the model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InputItem {
-    Message { role: Role, content: String },
+    Message {
+        role: Role,
+        content: String,
+    },
+    #[serde(rename = "function_call")]
+    ToolCall {
+        id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        call_id: Option<String>,
+        name: String,
+        arguments: serde_json::Value,
+    },
+    #[serde(rename = "function_call_output")]
+    ToolResult {
+        call_id: String,
+        output: String,
+    },
 }
 
 impl InputItem {
@@ -97,6 +113,8 @@ pub enum OutputItem {
     },
     ToolCall {
         id: String,
+        #[serde(default)]
+        call_id: Option<String>,
         name: String,
         arguments: serde_json::Value,
     },
