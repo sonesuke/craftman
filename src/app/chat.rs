@@ -106,7 +106,7 @@ async fn send_turn(
         let mut reasoning_text = String::new();
         let mut response_text = String::new();
         let mut in_reasoning = false;
-        let mut tool_calls: Vec<(String, String, serde_json::Value)> = Vec::new();
+        let mut tool_calls: Vec<(Option<String>, String, serde_json::Value)> = Vec::new();
 
         let _output = backend
             .stream_create_response(req, |event| match event {
@@ -137,12 +137,13 @@ async fn send_turn(
                     }
                     for item in &resp.output {
                         if let OutputItem::ToolCall {
-                            id,
+                            call_id,
                             name,
                             arguments,
+                            ..
                         } = item
                         {
-                            tool_calls.push((id.clone(), name.clone(), arguments.clone()));
+                            tool_calls.push((call_id.clone(), name.clone(), arguments.clone()));
                         }
                     }
                 }
@@ -160,12 +161,12 @@ async fn send_turn(
 
         // Handle tool calls
         eprintln!();
-        for (id, name, arguments) in &tool_calls {
+        for (call_id, name, arguments) in &tool_calls {
             let skill_name = arguments["name"].as_str().unwrap_or("");
             eprintln!("{ANSI_DIM}[load_skill: {skill_name}]{ANSI_RESET}");
 
             history.push(InputItem::ToolCall {
-                id: id.clone(),
+                id: call_id.clone().unwrap_or_default(),
                 name: name.clone(),
                 arguments: arguments.clone(),
             });
@@ -175,7 +176,7 @@ async fn send_turn(
             eprintln!("{ANSI_DIM}[tool result injected into context]{ANSI_RESET}");
 
             history.push(InputItem::ToolResult {
-                call_id: id.clone(),
+                call_id: call_id.clone().unwrap_or_default(),
                 output: output_text,
             });
         }

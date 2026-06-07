@@ -111,6 +111,8 @@ pub enum OutputItem {
     },
     ToolCall {
         id: String,
+        #[serde(default)]
+        call_id: Option<String>,
         name: String,
         arguments: serde_json::Value,
     },

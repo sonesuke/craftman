@@ -90,6 +90,8 @@ enum OllamaOutputItem {
     #[serde(rename = "function_call")]
     ToolCall {
         id: String,
+        #[serde(default)]
+        call_id: Option<String>,
         name: String,
         #[serde(deserialize_with = "deserialize_json_or_string")]
         arguments: serde_json::Value,
@@ -266,10 +268,12 @@ fn from_ollama_output(items: Vec<OllamaOutputItem>) -> Vec<OutputItem> {
             },
             OllamaOutputItem::ToolCall {
                 id,
+                call_id,
                 name,
                 arguments,
             } => OutputItem::ToolCall {
                 id,
+                call_id,
                 name,
                 arguments,
             },
