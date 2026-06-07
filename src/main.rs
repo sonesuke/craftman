@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 
 use craftman::app::chat;
@@ -16,13 +18,17 @@ struct Cli {
     /// Ollama base URL
     #[arg(long, default_value = "http://host.docker.internal:11434")]
     url: String,
+
+    /// Directory containing skill definitions (SKILL.md)
+    #[arg(long, default_value = "./skills")]
+    skills_dir: PathBuf,
 }
 
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
 
-    if let Err(e) = chat::run(&cli.url, &cli.model).await {
+    if let Err(e) = chat::run(&cli.url, &cli.model, &cli.skills_dir).await {
         eprintln!("Error: {e:#}");
         std::process::exit(1);
     }

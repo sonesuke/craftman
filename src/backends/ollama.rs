@@ -33,7 +33,21 @@ struct OllamaResponseRequest {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum OllamaInputItem {
-    Message { role: String, content: String },
+    Message {
+        role: String,
+        content: String,
+    },
+    #[serde(rename = "function_call")]
+    ToolCall {
+        id: String,
+        name: String,
+        arguments: serde_json::Value,
+    },
+    #[serde(rename = "function_call_output")]
+    ToolResult {
+        call_id: String,
+        output: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -175,6 +189,19 @@ fn to_ollama_input(items: &[InputItem]) -> Vec<OllamaInputItem> {
             InputItem::Message { role, content } => OllamaInputItem::Message {
                 role: role_to_str(role).to_string(),
                 content: content.clone(),
+            },
+            InputItem::ToolCall {
+                id,
+                name,
+                arguments,
+            } => OllamaInputItem::ToolCall {
+                id: id.clone(),
+                name: name.clone(),
+                arguments: arguments.clone(),
+            },
+            InputItem::ToolResult { call_id, output } => OllamaInputItem::ToolResult {
+                call_id: call_id.clone(),
+                output: output.clone(),
             },
         })
         .collect()
