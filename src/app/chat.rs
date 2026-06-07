@@ -194,9 +194,16 @@ fn handle_tool_call(registry: &SkillRegistry, name: &str, arguments: &serde_json
             match registry.activate(skill_name) {
                 Ok(instructions) => {
                     if instructions.is_empty() {
-                        format!("Skill '{skill_name}' loaded (no additional instructions).")
+                        format!(
+                            "Skill '{skill_name}' is now loaded and active. \
+                             Do not call load_skill for '{skill_name}' again."
+                        )
                     } else {
-                        format!("Skill '{skill_name}' activated.\n\n{instructions}")
+                        format!(
+                            "Skill '{skill_name}' is now loaded and active. \
+                             Do not call load_skill for '{skill_name}' again.\n\n\
+                             --- Skill Instructions ---\n{instructions}\n--- End of Instructions ---"
+                        )
                     }
                 }
                 Err(e) => format!("Error: {e:#}"),
