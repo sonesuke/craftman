@@ -43,6 +43,7 @@ enum OllamaInputItem {
         #[serde(skip_serializing_if = "Option::is_none")]
         call_id: Option<String>,
         name: String,
+        #[serde(serialize_with = "serialize_value_as_json_string")]
         arguments: serde_json::Value,
     },
     #[serde(rename = "function_call_output")]
@@ -178,6 +179,24 @@ where
         serde_json::Value::String(s) => serde_json::from_str(s)
             .map_err(|e| de::Error::custom(format!("invalid JSON in arguments string: {e}"))),
         _ => Ok(value),
+    }
+}
+
+/// Serialize a serde_json::Value as a JSON string (not a JSON object).
+///
+/// Ollama requires `arguments` in function_call input items to be a string,
+/// e.g. `"{\"name\":\"calculator\"}"` rather than `{"name":"calculator"}`.
+fn serialize_value_as_json_string<S>(
+    value: &serde_json::Value,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    // If it's already a string, send as-is; otherwise serialize to a JSON string
+    match value {
+        serde_json::Value::String(s) => serializer.serialize_str(s),
+        _ => serializer.serialize_str(&value.to_string()),
     }
 }
 

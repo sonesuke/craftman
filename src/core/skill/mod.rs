@@ -45,13 +45,15 @@ impl SkillRegistry {
 
     /// Build a description string listing all available skills for the load_skill tool.
     fn skills_summary(&self) -> String {
-        let mut summary =
-            String::from("Load a skill's instructions by name.\n\nAvailable skills:\n");
+        let mut summary = String::from(
+            "Load a skill's full instructions into context by its exact name. \
+             You must use the exact skill name as listed below.\n\nAvailable skills:\n",
+        );
         let mut names: Vec<&String> = self.skills.keys().collect();
         names.sort();
         for name in names {
             let skill = &self.skills[name];
-            summary.push_str(&format!("- {}: {}\n", name, skill.manifest.description));
+            summary.push_str(&format!("- \"{}\": {}\n", name, skill.manifest.description));
         }
         summary
     }
