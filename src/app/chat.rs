@@ -31,7 +31,8 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
     println!("Type /quit or /exit to leave. /clear to reset history. /skills to list skills.");
     println!();
 
-    let load_skill_tool = registry.load_skill_tool_definition();
+    let search_tool = registry.search_skills_tool_definition();
+    let load_tool = registry.load_skill_tool_definition();
 
     let mut history: Vec<InputItem> = Vec::new();
     let stdin = io::stdin();
@@ -75,7 +76,7 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
 
         history.push(InputItem::user(input));
 
-        match send_turn(&backend, &registry, &load_skill_tool, &mut history).await {
+        match send_turn(&backend, &registry, &search_tool, &load_tool, &mut history).await {
             Ok(()) => {}
             Err(e) => {
                 eprintln!("Error: {e:#}");
@@ -87,11 +88,12 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
     Ok(())
 }
 
-/// Send one turn (may involve multiple round-trips for load_skill calls).
+/// Send one turn (may involve multiple round-trips for tool calls).
 async fn send_turn(
     backend: &OllamaBackend,
     registry: &SkillRegistry,
-    load_skill_tool: &crate::core::llm::ToolDefinition,
+    search_tool: &crate::core::llm::ToolDefinition,
+    load_tool: &crate::core::llm::ToolDefinition,
     history: &mut Vec<InputItem>,
 ) -> Result<()> {
     loop {
@@ -99,7 +101,7 @@ async fn send_turn(
             input: history.clone(),
             instructions: None,
             model: String::new(),
-            tools: vec![load_skill_tool.clone()],
+            tools: vec![search_tool.clone(), load_tool.clone()],
             temperature: None,
             top_p: None,
             max_output_tokens: None,
@@ -165,8 +167,8 @@ async fn send_turn(
         // Handle tool calls
         eprintln!();
         for (call_id, name, arguments) in &tool_calls {
-            let skill_name = arguments["name"].as_str().unwrap_or("");
-            eprintln!("{ANSI_DIM}[load_skill: {skill_name}]{ANSI_RESET}");
+            let display = format_tool_call(name, arguments);
+            eprintln!("{ANSI_DIM}{display}{ANSI_RESET}");
 
             history.push(InputItem::ToolCall {
                 id: call_id.clone().unwrap_or_default(),
@@ -189,9 +191,38 @@ async fn send_turn(
     }
 }
 
+/// Format a tool call for display.
+fn format_tool_call(name: &str, arguments: &serde_json::Value) -> String {
+    match name {
+        "search_skills" => {
+            let query = arguments["query"].as_str().unwrap_or("");
+            format!("[search_skills: {query}]")
+        }
+        "load_skill" => {
+            let skill_name = arguments["name"].as_str().unwrap_or("");
+            format!("[load_skill: {skill_name}]")
+        }
+        _ => format!("[{name}]"),
+    }
+}
+
 /// Handle a single tool call from the LLM.
 fn handle_tool_call(registry: &SkillRegistry, name: &str, arguments: &serde_json::Value) -> String {
     match name {
+        "search_skills" => {
+            let query = arguments["query"].as_str().unwrap_or("");
+            let results = registry.search(query, 3);
+            if results.is_empty() {
+                "No skills found matching your query.".to_string()
+            } else {
+                let mut out = "Found matching skills:\n".to_string();
+                for r in &results {
+                    out.push_str(&format!("- \"{}\": {}\n", r.name, r.description));
+                }
+                out.push_str("Use load_skill with the exact name to activate a skill.");
+                out
+            }
+        }
         "load_skill" => {
             let skill_name = arguments["name"].as_str().unwrap_or("");
             match registry.activate(skill_name) {
