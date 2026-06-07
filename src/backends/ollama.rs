@@ -91,6 +91,7 @@ enum OllamaOutputItem {
     ToolCall {
         id: String,
         name: String,
+        #[serde(deserialize_with = "deserialize_json_or_string")]
         arguments: serde_json::Value,
     },
     Reasoning {
@@ -152,6 +153,28 @@ struct SseDelta {
 #[derive(Deserialize)]
 struct SseCompleted {
     response: OllamaResponseOutput,
+}
+
+// ---------------------------------------------------------------------------
+// Deserializer helpers
+// ---------------------------------------------------------------------------
+
+/// Deserialize a field that may be a JSON object or a JSON-encoded string.
+///
+/// Ollama returns tool call `arguments` as a JSON string (`"{\"name\":\"x\"}"`)
+/// while the OpenAI spec uses a JSON object. This handles both.
+fn deserialize_json_or_string<'de, D>(de: D) -> std::result::Result<serde_json::Value, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    let value = serde_json::Value::deserialize(de)?;
+    match &value {
+        serde_json::Value::String(s) => serde_json::from_str(s)
+            .map_err(|e| de::Error::custom(format!("invalid JSON in arguments string: {e}"))),
+        _ => Ok(value),
+    }
 }
 
 // ---------------------------------------------------------------------------
