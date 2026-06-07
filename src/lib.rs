@@ -1,13 +1,13 @@
-pub fn greet() -> String {
-    "Hello, world!".to_string()
-}
+pub mod app;
+pub mod backends;
+pub mod core;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// ---------------------------------------------------------------------------
+// Convenience re-exports
+// ---------------------------------------------------------------------------
 
-    #[test]
-    fn test_greet() {
-        assert_eq!(greet(), "Hello, world!");
-    }
-}
+pub use app::AssistantService;
+pub use backends::MockBackend;
+pub use backends::OllamaBackend;
+pub use core::llm::EmbeddingModel;
+pub use core::llm::ResponseModel;

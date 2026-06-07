@@ -80,7 +80,7 @@ fi
 cd /workspaces/craftman
 mise trust
 mise install
-mise generate git-pre-commit
+mise generate git-pre-commit -w
 
 
 # Configure gh auth for git
