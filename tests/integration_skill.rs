@@ -64,8 +64,54 @@ fn test_load_skill_tool_definition() {
 
     let tool = registry.load_skill_tool_definition();
     assert_eq!(tool.name, "load_skill");
-    assert!(tool.description.contains("calculator"));
+    assert!(tool.description.contains("search_skills"));
     assert!(!tool.parameters["required"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn test_search_skills_tool_definition() {
+    let skills_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("skills");
+    let mut registry = SkillRegistry::new();
+    registry.load_from_dir(&skills_dir).unwrap();
+
+    let tool = registry.search_skills_tool_definition();
+    assert_eq!(tool.name, "search_skills");
+    assert!(tool.description.contains("Search"));
+    assert!(!tool.parameters["required"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn test_search_finds_skill_by_keyword() {
+    let skills_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("skills");
+    let mut registry = SkillRegistry::new();
+    registry.load_from_dir(&skills_dir).unwrap();
+
+    let results = registry.search("calculator math", 5);
+    assert!(!results.is_empty(), "should find at least one skill");
+
+    let top = &results[0];
+    assert_eq!(top.name, "calculator");
+    assert!(top.score > 0.0);
+}
+
+#[test]
+fn test_search_returns_empty_for_no_match() {
+    let skills_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("skills");
+    let mut registry = SkillRegistry::new();
+    registry.load_from_dir(&skills_dir).unwrap();
+
+    let results = registry.search("xyzzy-nothing-matches-this", 5);
+    assert!(results.is_empty());
+}
+
+#[test]
+fn test_search_respects_top_k() {
+    let skills_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("skills");
+    let mut registry = SkillRegistry::new();
+    registry.load_from_dir(&skills_dir).unwrap();
+
+    let results = registry.search("calculator", 1);
+    assert!(results.len() <= 1);
 }
 
 #[test]
