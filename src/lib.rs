@@ -9,5 +9,6 @@ pub mod core;
 pub use app::AssistantService;
 pub use backends::MockBackend;
 pub use backends::OllamaBackend;
+pub use core::extractor::SituationExtractor;
 pub use core::llm::EmbeddingModel;
 pub use core::llm::ResponseModel;

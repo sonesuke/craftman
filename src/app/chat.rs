@@ -1,9 +1,11 @@
 use std::io::{self, Write};
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::Result;
 
 use crate::backends::OllamaBackend;
+use crate::core::extractor::{ExtractorInput, SituationExtractor};
 use crate::core::llm::{InputItem, OutputItem, ResponseRequest, StreamEvent};
 use crate::core::skill::SkillRegistry;
 
@@ -28,7 +30,9 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
     }
 
     println!("Craftman Chat — model: {model}");
-    println!("Type /quit or /exit to leave. /clear to reset history. /skills to list skills.");
+    println!(
+        "Type /quit or /exit to leave. /clear to reset history. /skills to list skills. /extract to analyze situation."
+    );
     println!();
 
     let search_tool = registry.search_skills_tool_definition();
@@ -69,6 +73,10 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
                         println!("- {name}");
                     }
                 }
+                continue;
+            }
+            "/extract" => {
+                handle_extract(&history, url);
                 continue;
             }
             _ => {}
@@ -244,5 +252,69 @@ fn handle_tool_call(registry: &SkillRegistry, name: &str, arguments: &serde_json
             }
         }
         _ => format!("Unknown tool: {name}"),
+    }
+}
+
+/// Handle the `/extract` command — run the Situation Extractor on recent history.
+fn handle_extract(history: &[InputItem], url: &str) {
+    // Collect recent user/assistant messages as conversation
+    let conversation: String = history
+        .iter()
+        .filter_map(|item| match item {
+            InputItem::Message { role, content } => Some(format!("{role:?}: {content}")),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if conversation.is_empty() {
+        eprintln!(
+            "{}[extract] No conversation to analyze.{}",
+            ANSI_DIM, ANSI_RESET
+        );
+        return;
+    }
+
+    // Collect earlier context (first half as context, second half as conversation)
+    let messages: Vec<&str> = conversation.lines().collect();
+    let split = messages.len().saturating_sub(3);
+    let (context, recent) = if messages.len() > 3 {
+        (&messages[..split], &messages[split..])
+    } else {
+        (&messages[..0], &messages[..])
+    };
+
+    let input = ExtractorInput {
+        conversation: recent.join("\n"),
+        context: context.iter().map(|s| s.to_string()).collect(),
+    };
+
+    eprintln!("{ANSI_DIM}[extract] Running Situation Extractor (lfm2.5-350m)...{ANSI_RESET}");
+
+    // Create a dedicated backend for the 350m model
+    let extractor_backend = Arc::new(OllamaBackend::new(url, "LiquidAI/lfm2.5-350m"));
+    let extractor = SituationExtractor::new(extractor_backend);
+
+    // Use a minimal tokio runtime for the async call
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!(
+                "{}[extract] Error creating runtime: {e}{ANSI_RESET}",
+                ANSI_DIM
+            );
+            return;
+        }
+    };
+
+    match rt.block_on(extractor.extract(input)) {
+        Ok(output) => {
+            let json = serde_json::to_string_pretty(&output)
+                .unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}"));
+            eprintln!("{ANSI_DIM}{json}{ANSI_RESET}");
+        }
+        Err(e) => {
+            eprintln!("{}[extract] Error: {e:#}{ANSI_RESET}", ANSI_DIM);
+        }
     }
 }
