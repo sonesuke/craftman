@@ -4,8 +4,11 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::backends::OllamaBackend;
-use crate::core::llm::{InputItem, OutputItem, ResponseRequest, StreamEvent};
+use crate::core::llm::{InputItem, OutputItem, ResponseRequest, Role, StreamEvent};
 use crate::core::skill::SkillRegistry;
+
+/// How many skills ToolRAG surfaces per user turn.
+const TOOLRAG_TOP_K: usize = 3;
 
 const ANSI_DIM: &str = "\x1b[2m";
 const ANSI_RESET: &str = "\x1b[0m";
@@ -31,7 +34,6 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
     println!("Type /quit or /exit to leave. /clear to reset history. /skills to list skills.");
     println!();
 
-    let search_tool = registry.search_skills_tool_definition();
     let load_tool = registry.load_skill_tool_definition();
 
     let mut history: Vec<InputItem> = Vec::new();
@@ -76,7 +78,7 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
 
         history.push(InputItem::user(input));
 
-        match send_turn(&backend, &registry, &search_tool, &load_tool, &mut history).await {
+        match send_turn(&backend, &registry, &load_tool, &mut history).await {
             Ok(()) => {}
             Err(e) => {
                 eprintln!("Error: {e:#}");
@@ -89,19 +91,24 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
 }
 
 /// Send one turn (may involve multiple round-trips for tool calls).
+///
+/// ToolRAG runs once per turn: the skills most relevant to the latest user
+/// message are retrieved and injected via `instructions`, so the model sees
+/// only the relevant subset instead of the whole catalog.
 async fn send_turn(
     backend: &OllamaBackend,
     registry: &SkillRegistry,
-    search_tool: &crate::core::llm::ToolDefinition,
     load_tool: &crate::core::llm::ToolDefinition,
     history: &mut Vec<InputItem>,
 ) -> Result<()> {
+    let instructions = build_toolrag_instructions(registry, history);
+
     loop {
         let req = ResponseRequest {
             input: history.clone(),
-            instructions: None,
+            instructions: instructions.clone(),
             model: String::new(),
-            tools: vec![search_tool.clone(), load_tool.clone()],
+            tools: vec![load_tool.clone()],
             temperature: None,
             top_p: None,
             max_output_tokens: None,
@@ -191,13 +198,44 @@ async fn send_turn(
     }
 }
 
+/// Build the ToolRAG system instructions for the current turn.
+///
+/// Retrieves the `TOOLRAG_TOP_K` skills most relevant to the latest user
+/// message and lists them so the model can `load_skill` the right one.
+/// Returns `None` when there is no user message or no skill matches, leaving
+/// the request without special instructions (as before).
+fn build_toolrag_instructions(registry: &SkillRegistry, history: &[InputItem]) -> Option<String> {
+    let query = last_user_message(history)?;
+    let skills = registry.retrieve(query, TOOLRAG_TOP_K);
+    if skills.is_empty() {
+        return None;
+    }
+
+    let mut out = String::from(
+        "You are craftman, a CLI assistant. \
+         Relevant skills for this request (call load_skill with the exact name to activate one if useful):\n",
+    );
+    for skill in &skills {
+        out.push_str(&format!("- \"{}\": {}\n", skill.name, skill.description));
+    }
+    out.push_str("If none are relevant, answer directly without loading a skill.");
+    Some(out)
+}
+
+/// Return the content of the most recent user message in `history`, if any.
+fn last_user_message(history: &[InputItem]) -> Option<&str> {
+    history.iter().rev().find_map(|item| match item {
+        InputItem::Message {
+            role: Role::User,
+            content,
+        } => Some(content.as_str()),
+        _ => None,
+    })
+}
+
 /// Format a tool call for display.
 fn format_tool_call(name: &str, arguments: &serde_json::Value) -> String {
     match name {
-        "search_skills" => {
-            let query = arguments["query"].as_str().unwrap_or("");
-            format!("[search_skills: {query}]")
-        }
         "load_skill" => {
             let skill_name = arguments["name"].as_str().unwrap_or("");
             format!("[load_skill: {skill_name}]")
@@ -209,20 +247,6 @@ fn format_tool_call(name: &str, arguments: &serde_json::Value) -> String {
 /// Handle a single tool call from the LLM.
 fn handle_tool_call(registry: &SkillRegistry, name: &str, arguments: &serde_json::Value) -> String {
     match name {
-        "search_skills" => {
-            let query = arguments["query"].as_str().unwrap_or("");
-            let results = registry.search(query, 3);
-            if results.is_empty() {
-                "No skills found matching your query.".to_string()
-            } else {
-                let mut out = "Found matching skills:\n".to_string();
-                for r in &results {
-                    out.push_str(&format!("- \"{}\": {}\n", r.name, r.description));
-                }
-                out.push_str("Use load_skill with the exact name to activate a skill.");
-                out
-            }
-        }
         "load_skill" => {
             let skill_name = arguments["name"].as_str().unwrap_or("");
             match registry.activate(skill_name) {
