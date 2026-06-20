@@ -40,11 +40,15 @@ Options:
 
 Skills extend the assistant with specialized knowledge using the [Agent Skills](https://agentskills.io/specification) format. Each skill is a directory containing a `SKILL.md` file with YAML frontmatter (metadata) and Markdown body (instructions).
 
-### How it works (Progressive Disclosure)
+### How it works (ToolRAG)
 
-1. **Discovery** — At startup, only skill `name` + `description` are loaded
-2. **Activation** — When the LLM decides a skill is relevant, it calls `load_skill("skill-name")`
-3. **Execution** — The full SKILL.md instructions are injected into the conversation context, and the LLM follows them
+Inspired by [TinyAgent](https://github.com/SqueezeAILab/TinyAgent)'s ToolRAG, craftman surfaces only the skills relevant to each message instead of handing the model the whole catalog:
+
+1. **Discovery** — At startup, skill `name` + `description` are loaded and indexed
+2. **Retrieve** — Each turn, the skills most relevant to the user's message are ranked with BM25 (matches on `name` weighted above `description`) and injected into the request, so the model never reasons over irrelevant skills
+3. **Activation** — The model calls `load_skill("skill-name")` to pull in the full SKILL.md instructions for the one it needs
+
+Retrieval is dependency-free keyword matching (BM25) — no embedding model required. The engine lives in [`src/core/retriever.rs`](src/core/retriever.rs) and can be swapped for an embedding-based retriever later.
 
 ### Example Skill
 
@@ -118,7 +122,7 @@ src/
 ├── main.rs              CLI entry point (clap)
 ├── lib.rs               Library exports
 ├── app/
-│   ├── chat.rs          Interactive chat REPL with load_skill tool calling
+│   ├── chat.rs          Interactive chat REPL: per-turn ToolRAG retrieval + load_skill
 │   └── assistant_service.rs  High-level Q&A service
 ├── backends/
 │   ├── ollama.rs        Ollama backend (Responses API + embeddings + streaming)
@@ -127,8 +131,9 @@ src/
     ├── llm/
     │   ├── mod.rs       ResponseModel / EmbeddingModel traits
     │   └── types.rs     Domain types (InputItem, OutputItem, StreamEvent, etc.)
+    ├── retriever.rs     BM25 ToolRAG retrieval engine (dependency-free)
     └── skill/
-        ├── mod.rs       SkillRegistry with load_skill tool support
+        ├── mod.rs       SkillRegistry with ToolRAG retrieve + load_skill
         ├── loader.rs    SKILL.md parser
         └── types.rs     SkillManifest, Skill
 ```
