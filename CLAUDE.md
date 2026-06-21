@@ -6,6 +6,7 @@ Project instructions for agents (Claude Code) working in this repository.
 
 - **Interaction is in Japanese** — replies, explanations, and questions directed at the user.
 - **Persistent artifacts are in English** — anything that remains in git or GitHub: pull requests, issues, commit messages, code comments, and documentation (README, CONTEXT.md, ADRs, docs/).
+- **Write natural Japanese, not Chinese-influenced Japanese.** The underlying model tends to drift toward Chinese phrasing and Sino-centric kanji compounds. Use proper hiragana particles, `です/ます` polite form, and native Japanese wording; avoid expressions that read as Chinese. When unsure whether a phrase is natural Japanese, prefer simpler, kana-heavy phrasing.
 
 ## Agent skills
 
