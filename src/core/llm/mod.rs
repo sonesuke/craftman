@@ -15,6 +15,15 @@ pub use types::{
 #[async_trait]
 pub trait ResponseModel: Send + Sync {
     async fn create_response(&self, req: ResponseRequest) -> Result<ResponseOutput>;
+
+    /// Stream a response, calling `on_event` for each `StreamEvent`.
+    ///
+    /// Returns the final `ResponseOutput` once the stream completes.
+    async fn stream_create_response(
+        &self,
+        req: ResponseRequest,
+        on_event: &mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Result<ResponseOutput>;
 }
 
 /// Trait for embedding models.

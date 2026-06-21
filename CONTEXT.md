@@ -37,7 +37,7 @@ An Agent Skills frontmatter field listing the tools a skill may use. In craftman
 _Avoid_: dependencies, imports
 
 **Harness**:
-The craftman runtime that orchestrates a turn — runs skill retrieval, activates skills, exposes the tools their `allowed-tools` declare, dispatches tool calls, and feeds results back to the model.
+The craftman runtime that orchestrates a turn — runs skill retrieval, activates skills, exposes the tools their `allowed-tools` declare, dispatches tool calls, and feeds results back to the model. Each step of a turn is emitted as an event, so the CLI (display) and observers (logs, metrics) can react without knowing the harness internals.
 _Avoid_: runtime, loop, orchestrator, agent
 
 **Progressive disclosure**:

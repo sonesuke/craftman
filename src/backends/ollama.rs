@@ -327,7 +327,6 @@ pub struct OllamaBackend {
     client: reqwest::Client,
     base_url: String,
     model: String,
-    log_file: Option<std::path::PathBuf>,
 }
 
 impl OllamaBackend {
@@ -336,7 +335,6 @@ impl OllamaBackend {
             client: reqwest::Client::new(),
             base_url: base_url.into(),
             model: model.into(),
-            log_file: None,
         }
     }
 
@@ -349,49 +347,11 @@ impl OllamaBackend {
         Self::new("http://host.docker.internal:11434", model)
     }
 
-    /// Set a JSONL log file to record all request/response exchanges.
-    pub fn with_log_file(&mut self, path: impl Into<std::path::PathBuf>) {
-        self.log_file = Some(path.into());
-    }
-
-    /// Append a JSONL entry to the log file (if configured).
-    fn log_exchange(&self, direction: &str, payload: &serde_json::Value) {
-        use std::io::Write;
-        use std::time::SystemTime;
-
-        let Some(path) = &self.log_file else { return };
-
-        let ts = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        let entry = serde_json::json!({
-            "ts": ts,
-            "direction": direction,
-            "payload": payload,
-        });
-
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-        {
-            let _ = writeln!(f, "{}", entry);
-        }
-    }
-
-    /// Stream a response, calling `on_event` for each SSE event.
-    ///
-    /// Returns the final `ResponseOutput` once the stream completes.
-    pub async fn stream_create_response<F>(
+    async fn stream_response_inner(
         &self,
         req: ResponseRequest,
-        mut on_event: F,
-    ) -> Result<ResponseOutput>
-    where
-        F: FnMut(StreamEvent),
-    {
+        on_event: &mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Result<ResponseOutput> {
         let model = resolve_model(&req.model, &self.model);
 
         let ollama_req = OllamaResponseRequest {
@@ -410,20 +370,11 @@ impl OllamaBackend {
 
         let url = format!("{}/v1/responses", self.base_url);
 
-        self.log_exchange(
-            "request",
-            &serde_json::json!({"method": "POST", "url": &url, "body": &ollama_req}),
-        );
-
         let resp = self.client.post(&url).json(&ollama_req).send().await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            self.log_exchange(
-                "response",
-                &serde_json::json!({"status": status.as_u16(), "body": &body}),
-            );
             anyhow::bail!("Ollama streaming request failed: HTTP {status}\n{body}");
         }
 
@@ -484,10 +435,6 @@ impl OllamaBackend {
                             };
 
                             on_event(StreamEvent::Done(output.clone()));
-                            self.log_exchange(
-                                "response",
-                                &serde_json::json!({"status": 200, "event": "response.completed", "body": data_str}),
-                            );
                             final_output = Some(output);
                         }
                     }
@@ -523,28 +470,15 @@ impl ResponseModel for OllamaBackend {
 
         let url = format!("{}/v1/responses", self.base_url);
 
-        self.log_exchange(
-            "request",
-            &serde_json::json!({"method": "POST", "url": &url, "body": &ollama_req}),
-        );
-
         let resp = self.client.post(&url).json(&ollama_req).send().await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            self.log_exchange(
-                "response",
-                &serde_json::json!({"status": status.as_u16(), "body": &body}),
-            );
             anyhow::bail!("Ollama responses request failed: HTTP {status}\n{body}");
         }
 
         let resp_text = resp.text().await?;
-        self.log_exchange(
-            "response",
-            &serde_json::json!({"status": 200, "body": resp_text.as_str()}),
-        );
 
         let ollama_resp: OllamaResponseOutput = serde_json::from_str(&resp_text)?;
 
@@ -562,6 +496,14 @@ impl ResponseModel for OllamaBackend {
             },
         })
     }
+
+    async fn stream_create_response(
+        &self,
+        req: ResponseRequest,
+        on_event: &mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Result<ResponseOutput> {
+        self.stream_response_inner(req, on_event).await
+    }
 }
 
 #[async_trait]
@@ -576,28 +518,15 @@ impl EmbeddingModel for OllamaBackend {
 
         let url = format!("{}/api/embed", self.base_url);
 
-        self.log_exchange(
-            "request",
-            &serde_json::json!({"method": "POST", "url": &url, "body": &ollama_req}),
-        );
-
         let resp = self.client.post(&url).json(&ollama_req).send().await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            self.log_exchange(
-                "response",
-                &serde_json::json!({"status": status.as_u16(), "body": &body}),
-            );
             anyhow::bail!("Ollama embed request failed: HTTP {status}\n{body}");
         }
 
         let resp_text = resp.text().await?;
-        self.log_exchange(
-            "response",
-            &serde_json::json!({"status": 200, "body": resp_text.as_str()}),
-        );
 
         let ollama_resp: OllamaEmbedResponse = serde_json::from_str(&resp_text)?;
 
