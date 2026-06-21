@@ -123,6 +123,16 @@ impl SkillRegistry {
             .collect()
     }
 
+    /// Tools this skill declares via `allowed-tools` (split on whitespace).
+    /// Empty if the skill is unknown or declares none.
+    pub fn allowed_tools_of(&self, name: &str) -> Vec<String> {
+        self.skills
+            .get(name)
+            .and_then(|s| s.manifest.allowed_tools.as_deref())
+            .map(|s| s.split_whitespace().map(String::from).collect())
+            .unwrap_or_default()
+    }
+
     /// Activate a skill by name, returning its full instructions.
     pub fn activate(&self, name: &str) -> Result<&str> {
         let skill = self

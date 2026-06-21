@@ -137,6 +137,23 @@ Instructions here.
     }
 
     #[test]
+    fn test_parse_allowed_tools() {
+        let content = "\
+---
+name: my-skill
+description: Does something
+allowed-tools: calculator notes
+---
+Instructions here.
+";
+        let skill = parse_skill_md(content).unwrap();
+        assert_eq!(
+            skill.manifest.allowed_tools.as_deref(),
+            Some("calculator notes")
+        );
+    }
+
+    #[test]
     fn test_reject_invalid_names() {
         let cases = vec![
             ("-bad", "leading hyphen"),
