@@ -38,7 +38,7 @@ _Avoid_: dependencies, imports
 
 **Harness**:
 The craftman runtime that orchestrates a turn — runs skill retrieval, activates skills, exposes the tools their `allowed-tools` declare, dispatches tool calls, and feeds results back to the model.
-_Avoid_: runtime, loop, orchestrator
+_Avoid_: runtime, loop, orchestrator, agent
 
 **Progressive disclosure**:
 The standard's loading discipline: a skill enters context in stages — Manifest first (at retrieval), Instructions on activation, bundled resources only when needed — so only what the task requires is read.
