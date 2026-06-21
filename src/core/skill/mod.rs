@@ -22,11 +22,11 @@ pub struct SearchResult {
 
 /// Registry of loaded skill definitions.
 ///
-/// Implements a ToolRAG-style retrieval flow (inspired by TinyAgent):
-/// 1. **Discovery**: skill names + descriptions loaded at startup
-/// 2. **Retrieve**: [`SkillRegistry::retrieve`] ranks skills against the
+/// Implements a skill retrieval flow (inspired by TinyAgent's ToolRAG):
+/// 1. **Indexing**: skill names + descriptions read at startup
+/// 2. **Retrieval**: [`SkillRegistry::retrieve`] ranks skills against the
 ///    current query with BM25 so only the relevant subset is surfaced
-/// 3. **Activation**: the `load_skill` tool returns full instructions on demand
+/// 3. **Activation**: the `activate_skill` tool returns full instructions on demand
 pub struct SkillRegistry {
     skills: HashMap<String, Skill>,
     /// BM25 index over `(name, description)`, kept in sync with `skills`.
@@ -51,7 +51,7 @@ impl SkillRegistry {
         }
     }
 
-    /// Load skills from a directory (discovery phase).
+    /// Read skills from a directory (the indexing phase).
     pub fn load_from_dir(&mut self, dir: &Path) -> Result<()> {
         let skills = loader::load_skills_from_dir(dir)?;
         for skill in skills {
@@ -80,22 +80,23 @@ impl SkillRegistry {
         self.retrieval_order = order;
     }
 
-    /// Return the `load_skill` tool definition for the LLM.
+    /// Return the `activate_skill` tool definition for the LLM.
     ///
-    /// Relevant skills are surfaced automatically each turn (ToolRAG), so the
-    /// model uses this only to activate a skill it has been shown.
-    pub fn load_skill_tool_definition(&self) -> ToolDefinition {
+    /// Relevant skills are surfaced automatically each turn (skill retrieval),
+    /// so the model uses this only to activate a skill it has been shown.
+    pub fn activate_skill_tool_definition(&self) -> ToolDefinition {
         ToolDefinition {
-            name: "load_skill".to_string(),
-            description: "Load a skill's full instructions into context by its exact name. \
-                Relevant skills are already shown to you each turn; use this to activate the one you need."
+            name: "activate_skill".to_string(),
+            description: "Activate a skill by its exact name, loading its full instructions \
+                into context. Relevant skills are already shown to you each turn; use this \
+                to activate the one you need."
                 .to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "Exact name of the skill to load"
+                        "description": "Exact name of the skill to activate"
                     }
                 },
                 "required": ["name"]

@@ -70,13 +70,14 @@ fn test_skill_allowed_tools_parsed() {
 }
 
 #[test]
-fn test_load_skill_tool_definition() {
+fn test_activate_skill_tool_definition() {
     let skills_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("skills");
     let mut registry = SkillRegistry::new();
     registry.load_from_dir(&skills_dir).unwrap();
 
-    let tool = registry.load_skill_tool_definition();
-    assert_eq!(tool.name, "load_skill");
+    let tool = registry.activate_skill_tool_definition();
+    assert_eq!(tool.name, "activate_skill");
+    assert!(tool.description.to_lowercase().contains("activate"));
     assert!(tool.description.contains("instructions"));
     assert!(!tool.parameters["required"].as_array().unwrap().is_empty());
 }

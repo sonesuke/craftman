@@ -1,9 +1,9 @@
-//! ToolRAG retrieval engine — dependency-free, keyword (BM25) based.
+//! Skill retrieval engine — dependency-free, keyword (BM25) based.
 //!
-//! Mirrors TinyAgent's ToolRAG pattern: per query, retrieve the small subset
-//! of "tools" (here: skills) that are actually relevant, so the model never
-//! has to reason over the full catalog. Unlike TinyAgent we use BM25 instead
-//! of embeddings to keep the dependency list empty and latency predictable.
+//! Inspired by TinyAgent's ToolRAG pattern: per query, retrieve the small subset
+//! of skills that are actually relevant, so the model never has to reason over
+//! the full catalog. Unlike TinyAgent we use BM25 instead of embeddings to keep
+//! the dependency list empty and latency predictable.
 //!
 //! Each document is modelled as two fields — a short `name` and a longer
 //! `description` — and a query is scored as

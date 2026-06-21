@@ -10,8 +10,8 @@ use crate::core::skill::SkillRegistry;
 use crate::tools::ToolRegistry;
 use crate::tools::calculator::Calculator;
 
-/// How many skills ToolRAG surfaces per user turn.
-const TOOLRAG_TOP_K: usize = 3;
+/// How many skills skill retrieval surfaces per user turn.
+const RETRIEVAL_TOP_K: usize = 3;
 
 const ANSI_DIM: &str = "\x1b[2m";
 const ANSI_RESET: &str = "\x1b[0m";
@@ -40,10 +40,10 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
     println!("Type /quit or /exit to leave. /clear to reset history. /skills to list skills.");
     println!();
 
-    let load_tool = registry.load_skill_tool_definition();
+    let activate_tool = registry.activate_skill_tool_definition();
 
     let mut history: Vec<InputItem> = Vec::new();
-    // Skills activated via load_skill this session. Their `allowed-tools` are
+    // Skills activated via activate_skill this session. Their `allowed-tools` are
     // exposed to the model; /clear resets both history and this set.
     let mut active_skills: HashSet<String> = HashSet::new();
     let stdin = io::stdin();
@@ -92,7 +92,7 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
             &backend,
             &registry,
             &tool_registry,
-            &load_tool,
+            &activate_tool,
             &mut active_skills,
             &mut history,
         )
@@ -111,22 +111,22 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
 
 /// Send one turn (may involve multiple round-trips for tool calls).
 ///
-/// ToolRAG runs once per turn (relevant skills injected via `instructions`).
+/// Skill retrieval runs once per turn (relevant skills injected via `instructions`).
 /// Tools are exposed only through the `allowed-tools` of active skills, so the
-/// `tools` array is rebuilt every iteration — loading a skill mid-turn makes
+/// `tools` array is rebuilt every iteration — activating a skill mid-turn makes
 /// its tools available on the next round-trip.
 async fn send_turn(
     backend: &OllamaBackend,
     registry: &SkillRegistry,
     tool_registry: &ToolRegistry,
-    load_tool: &ToolDefinition,
+    activate_tool: &ToolDefinition,
     active_skills: &mut HashSet<String>,
     history: &mut Vec<InputItem>,
 ) -> Result<()> {
-    let instructions = build_toolrag_instructions(registry, history);
+    let instructions = build_retrieval_instructions(registry, history);
 
     loop {
-        let mut tools = vec![load_tool.clone()];
+        let mut tools = vec![activate_tool.clone()];
         tools.extend(exposed_tool_defs(registry, tool_registry, active_skills));
 
         let req = ResponseRequest {
@@ -236,27 +236,27 @@ fn exposed_tool_defs(
     tool_registry.definitions_for(&names)
 }
 
-/// Build the ToolRAG system instructions for the current turn.
+/// Build the skill retrieval instructions for the current turn.
 ///
-/// Retrieves the `TOOLRAG_TOP_K` skills most relevant to the latest user
-/// message and lists them so the model can `load_skill` the right one.
+/// Retrieves the `RETRIEVAL_TOP_K` skills most relevant to the latest user
+/// message and lists them so the model can `activate_skill` the right one.
 /// Returns `None` when there is no user message or no skill matches, leaving
 /// the request without special instructions (as before).
-fn build_toolrag_instructions(registry: &SkillRegistry, history: &[InputItem]) -> Option<String> {
+fn build_retrieval_instructions(registry: &SkillRegistry, history: &[InputItem]) -> Option<String> {
     let query = last_user_message(history)?;
-    let skills = registry.retrieve(query, TOOLRAG_TOP_K);
+    let skills = registry.retrieve(query, RETRIEVAL_TOP_K);
     if skills.is_empty() {
         return None;
     }
 
     let mut out = String::from(
-        "You are craftman, a CLI assistant. \
-         Relevant skills for this request (call load_skill with the exact name to activate one if useful):\n",
+        "You are craftman, a CLI assistant. Relevant skills for this request \
+         (call activate_skill with the exact name to activate one if useful):\n",
     );
     for skill in &skills {
         out.push_str(&format!("- \"{}\": {}\n", skill.name, skill.description));
     }
-    out.push_str("If none are relevant, answer directly without loading a skill.");
+    out.push_str("If none are relevant, answer directly without activating a skill.");
     Some(out)
 }
 
@@ -274,9 +274,9 @@ fn last_user_message(history: &[InputItem]) -> Option<&str> {
 /// Format a tool call for display.
 fn format_tool_call(name: &str, arguments: &serde_json::Value) -> String {
     match name {
-        "load_skill" => {
+        "activate_skill" => {
             let skill_name = arguments["name"].as_str().unwrap_or("");
-            format!("[load_skill: {skill_name}]")
+            format!("[activate_skill: {skill_name}]")
         }
         _ => {
             let arg = arguments
@@ -290,7 +290,7 @@ fn format_tool_call(name: &str, arguments: &serde_json::Value) -> String {
 
 /// Handle a single tool call from the LLM.
 ///
-/// `load_skill` activates a skill — injecting its instructions and recording it
+/// `activate_skill` activates a skill — injecting its instructions and recording it
 /// active so its `allowed-tools` are exposed. Any other name dispatches to the
 /// matching registered tool.
 async fn handle_tool_call(
@@ -301,20 +301,20 @@ async fn handle_tool_call(
     arguments: &serde_json::Value,
 ) -> String {
     match name {
-        "load_skill" => {
+        "activate_skill" => {
             let skill_name = arguments["name"].as_str().unwrap_or("");
             match registry.activate(skill_name) {
                 Ok(instructions) => {
                     active_skills.insert(skill_name.to_string());
                     if instructions.is_empty() {
                         format!(
-                            "Skill '{skill_name}' is now loaded and active. \
-                             Do not call load_skill for '{skill_name}' again."
+                            "Skill '{skill_name}' is now active and its tools are exposed. \
+                             Do not call activate_skill for '{skill_name}' again."
                         )
                     } else {
                         format!(
-                            "Skill '{skill_name}' is now loaded and active. \
-                             Do not call load_skill for '{skill_name}' again.\n\n\
+                            "Skill '{skill_name}' is now active and its tools are exposed. \
+                             Do not call activate_skill for '{skill_name}' again.\n\n\
                              --- Skill Instructions ---\n{instructions}\n--- End of Instructions ---"
                         )
                     }

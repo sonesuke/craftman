@@ -1,0 +1,3 @@
+# Skill retrieval uses BM25; embedding code is intentionally unused
+
+craftman's skill retrieval retrieves the relevant skill subset per turn using **BM25** (sparse / lexical retrieval over name + description) — a standard RAG retrieval method, not a workaround or a deviation from RAG. The codebase also defines an `EmbeddingModel` trait and an Ollama `/api/embed` implementation that are **deliberately left unused**: BM25 needs no embedding model pulled into Ollama and adds zero dependencies, and the retriever sits behind a small interface so a dense retriever can replace it later. This is recorded so the unused embedding code isn't mistaken for dead code or an unfinished feature.
