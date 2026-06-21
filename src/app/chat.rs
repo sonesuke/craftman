@@ -1,11 +1,14 @@
+use std::collections::HashSet;
 use std::io::{self, Write};
 use std::path::Path;
 
 use anyhow::Result;
 
 use crate::backends::OllamaBackend;
-use crate::core::llm::{InputItem, OutputItem, ResponseRequest, Role, StreamEvent};
+use crate::core::llm::{InputItem, OutputItem, ResponseRequest, Role, StreamEvent, ToolDefinition};
 use crate::core::skill::SkillRegistry;
+use crate::tools::ToolRegistry;
+use crate::tools::calculator::Calculator;
 
 /// How many skills ToolRAG surfaces per user turn.
 const TOOLRAG_TOP_K: usize = 3;
@@ -30,6 +33,9 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
         println!("Available skills: {}", names.join(", "));
     }
 
+    let mut tool_registry = ToolRegistry::new();
+    tool_registry.register(Box::new(Calculator));
+
     println!("Craftman Chat — model: {model}");
     println!("Type /quit or /exit to leave. /clear to reset history. /skills to list skills.");
     println!();
@@ -37,6 +43,9 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
     let load_tool = registry.load_skill_tool_definition();
 
     let mut history: Vec<InputItem> = Vec::new();
+    // Skills activated via load_skill this session. Their `allowed-tools` are
+    // exposed to the model; /clear resets both history and this set.
+    let mut active_skills: HashSet<String> = HashSet::new();
     let stdin = io::stdin();
     let mut stdout = io::stdout();
 
@@ -59,6 +68,7 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
             "/quit" | "/exit" => break,
             "/clear" => {
                 history.clear();
+                active_skills.clear();
                 println!("(history cleared)");
                 continue;
             }
@@ -78,7 +88,16 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
 
         history.push(InputItem::user(input));
 
-        match send_turn(&backend, &registry, &load_tool, &mut history).await {
+        match send_turn(
+            &backend,
+            &registry,
+            &tool_registry,
+            &load_tool,
+            &mut active_skills,
+            &mut history,
+        )
+        .await
+        {
             Ok(()) => {}
             Err(e) => {
                 eprintln!("Error: {e:#}");
@@ -92,30 +111,35 @@ pub async fn run(url: &str, model: &str, skills_dir: &Path, log_file: Option<&Pa
 
 /// Send one turn (may involve multiple round-trips for tool calls).
 ///
-/// ToolRAG runs once per turn: the skills most relevant to the latest user
-/// message are retrieved and injected via `instructions`, so the model sees
-/// only the relevant subset instead of the whole catalog.
+/// ToolRAG runs once per turn (relevant skills injected via `instructions`).
+/// Tools are exposed only through the `allowed-tools` of active skills, so the
+/// `tools` array is rebuilt every iteration — loading a skill mid-turn makes
+/// its tools available on the next round-trip.
 async fn send_turn(
     backend: &OllamaBackend,
     registry: &SkillRegistry,
-    load_tool: &crate::core::llm::ToolDefinition,
+    tool_registry: &ToolRegistry,
+    load_tool: &ToolDefinition,
+    active_skills: &mut HashSet<String>,
     history: &mut Vec<InputItem>,
 ) -> Result<()> {
     let instructions = build_toolrag_instructions(registry, history);
 
     loop {
+        let mut tools = vec![load_tool.clone()];
+        tools.extend(exposed_tool_defs(registry, tool_registry, active_skills));
+
         let req = ResponseRequest {
             input: history.clone(),
             instructions: instructions.clone(),
             model: String::new(),
-            tools: vec![load_tool.clone()],
+            tools,
             temperature: None,
             top_p: None,
             max_output_tokens: None,
             reasoning: None,
         };
 
-        let mut reasoning_text = String::new();
         let mut response_text = String::new();
         let mut in_reasoning = false;
         let mut tool_calls: Vec<(Option<String>, String, serde_json::Value)> = Vec::new();
@@ -129,7 +153,6 @@ async fn send_turn(
                     }
                     eprint!("{delta}");
                     let _ = io::stderr().flush();
-                    reasoning_text.push_str(&delta);
                 }
                 StreamEvent::TextDelta(delta) => {
                     if in_reasoning {
@@ -184,7 +207,8 @@ async fn send_turn(
                 arguments: arguments.clone(),
             });
 
-            let output_text = handle_tool_call(registry, name, arguments);
+            let output_text =
+                handle_tool_call(registry, tool_registry, active_skills, name, arguments).await;
 
             eprintln!("{ANSI_DIM}[tool result injected into context]{ANSI_RESET}");
 
@@ -196,6 +220,20 @@ async fn send_turn(
 
         // Loop: send follow-up with tool results so the LLM can respond
     }
+}
+
+/// Tool definitions exposed this turn: the union of `allowed-tools` across all
+/// active skills, resolved against the registry (de-duplicated).
+fn exposed_tool_defs(
+    registry: &SkillRegistry,
+    tool_registry: &ToolRegistry,
+    active_skills: &HashSet<String>,
+) -> Vec<ToolDefinition> {
+    let names: Vec<String> = active_skills
+        .iter()
+        .flat_map(|skill| registry.allowed_tools_of(skill))
+        .collect();
+    tool_registry.definitions_for(&names)
 }
 
 /// Build the ToolRAG system instructions for the current turn.
@@ -240,17 +278,34 @@ fn format_tool_call(name: &str, arguments: &serde_json::Value) -> String {
             let skill_name = arguments["name"].as_str().unwrap_or("");
             format!("[load_skill: {skill_name}]")
         }
-        _ => format!("[{name}]"),
+        _ => {
+            let arg = arguments
+                .as_object()
+                .and_then(|m| m.values().find_map(|v| v.as_str()))
+                .unwrap_or("");
+            format!("[{name}: {arg}]")
+        }
     }
 }
 
 /// Handle a single tool call from the LLM.
-fn handle_tool_call(registry: &SkillRegistry, name: &str, arguments: &serde_json::Value) -> String {
+///
+/// `load_skill` activates a skill — injecting its instructions and recording it
+/// active so its `allowed-tools` are exposed. Any other name dispatches to the
+/// matching registered tool.
+async fn handle_tool_call(
+    registry: &SkillRegistry,
+    tool_registry: &ToolRegistry,
+    active_skills: &mut HashSet<String>,
+    name: &str,
+    arguments: &serde_json::Value,
+) -> String {
     match name {
         "load_skill" => {
             let skill_name = arguments["name"].as_str().unwrap_or("");
             match registry.activate(skill_name) {
                 Ok(instructions) => {
+                    active_skills.insert(skill_name.to_string());
                     if instructions.is_empty() {
                         format!(
                             "Skill '{skill_name}' is now loaded and active. \
@@ -267,6 +322,9 @@ fn handle_tool_call(registry: &SkillRegistry, name: &str, arguments: &serde_json
                 Err(e) => format!("Error: {e:#}"),
             }
         }
-        _ => format!("Unknown tool: {name}"),
+        _ => match tool_registry.invoke(name, arguments.clone()).await {
+            Ok(out) => out,
+            Err(e) => format!("Error: {e:#}"),
+        },
     }
 }

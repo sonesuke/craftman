@@ -25,6 +25,12 @@ pub struct SkillManifest {
     /// Optional arbitrary key-value metadata.
     #[serde(default)]
     pub metadata: Option<HashMap<String, String>>,
+
+    /// Optional space-separated list of tools the skill may use
+    /// (agentskills.io `allowed-tools`, experimental). A directive to the
+    /// harness: when this skill is active, these tools are exposed.
+    #[serde(default, rename = "allowed-tools")]
+    pub allowed_tools: Option<String>,
 }
 
 /// A fully loaded skill: manifest + instruction body.
