@@ -66,6 +66,7 @@
             };
             fakeRootCommands = ''
               mkdir -p ./home/user/.config ./workspaces ./tmp ./lib
+              chown -R 1000:1000 ./workspaces
               chmod 1777 ./tmp
               echo "user:x:1000:1000::/home/user:/bin/zsh" >> ./etc/passwd
               echo "user:x:1000:" >> ./etc/group
