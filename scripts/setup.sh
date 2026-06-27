@@ -54,6 +54,10 @@ export PATH="\$HOME/.local/bin:\$HOME/.cargo/bin:\$PATH"
 alias claude="claude --allow-dangerously-skip-permissions"
 eval "\$(mise activate zsh)"
 
+# Completions (needed by worktrunk's shell integration, which appends a wt()
+# function later in this file)
+autoload -Uz compinit && compinit
+
 # Zsh plugins
 ${AUTOSUGGESTIONS:+source ${AUTOSUGGESTIONS}}
 ${SYNTAX_HIGHLIGHTING:+source ${SYNTAX_HIGHLIGHTING}}
@@ -83,6 +87,15 @@ mise trust
 mise install
 mise generate git-pre-commit -w
 
+# Install worktrunk (git worktree management for parallel AI agent workflows)
+# - Shell integration runs AFTER the .zshrc is generated above, otherwise the
+#   generated .zshrc would overwrite the wt() function it appends.
+# - `binstall -y` and `--yes` skip interactive confirmation prompts (this runs
+#   non-interactively via docker exec); `zsh` scopes shell install to our shell.
+echo "Installing worktrunk..."
+cargo binstall -y worktrunk
+export PATH="$HOME/.cargo/bin:$PATH"
+wt --yes config shell install zsh
 
 # Configure gh auth for git
 if command -v gh >/dev/null 2>&1; then
