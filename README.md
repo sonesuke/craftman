@@ -40,39 +40,33 @@ Options:
 
 Skills extend the assistant with specialized knowledge using the [Agent Skills](https://agentskills.io/specification) format. Each skill is a directory containing a `SKILL.md` file with YAML frontmatter (metadata) and Markdown body (instructions).
 
-### How it works (ToolRAG)
+### How it works (skill retrieval)
 
-Inspired by [TinyAgent](https://github.com/SqueezeAILab/TinyAgent)'s ToolRAG, craftman surfaces only the skills relevant to each message instead of handing the model the whole catalog:
+Inspired by [TinyAgent](https://github.com/SqueezeAILab/TinyAgent)'s ToolRAG, craftman's skill retrieval surfaces only the skills relevant to each message instead of handing the model the whole catalog:
 
-1. **Discovery** — At startup, skill `name` + `description` are loaded and indexed
-2. **Retrieve** — Each turn, the skills most relevant to the user's message are ranked with BM25 (matches on `name` weighted above `description`) and injected into the request, so the model never reasons over irrelevant skills
-3. **Activation** — The model calls `load_skill("skill-name")` to pull in the full SKILL.md instructions for the one it needs
+1. **Indexing** — At startup, skill `name` + `description` are read and indexed
+2. **Retrieval** — Each turn, the skills most relevant to the user's message are ranked with BM25 (matches on `name` weighted above `description`) and injected into the request, so the model never reasons over irrelevant skills
+3. **Activation** — The model calls `activate_skill("skill-name")` to pull in the full SKILL.md instructions for the one it needs
 
 Retrieval is dependency-free keyword matching (BM25) — no embedding model required. The engine lives in [`src/core/retriever.rs`](src/core/retriever.rs) and can be swapped for an embedding-based retriever later.
 
 ### Example Skill
 
 ```
-skills/calculator/
+skills/arithmetic/
 └── SKILL.md
 ```
 
 ```markdown
 ---
-name: calculator
-description: Evaluate mathematical expressions and return the result
+name: arithmetic
+description: Guidance for evaluating arithmetic expressions. Enables the calculator tool.
+allowed-tools: calculator
 ---
 
-# Calculator
+# Arithmetic
 
-Evaluates a mathematical expression and returns the numeric result.
-
-## Parameters
-- expression (string, required): The expression to evaluate, e.g. "2 + 3 * 4"
-
-## Examples
-- "1 + 1" → "2"
-- "2 * (3 + 4)" → "14"
+When the user asks to evaluate an arithmetic expression, use the `calculator` tool with the expression exactly as given.
 ```
 
 ### Creating a Skill
@@ -122,7 +116,7 @@ src/
 ├── main.rs              CLI entry point (clap)
 ├── lib.rs               Library exports
 ├── app/
-│   ├── chat.rs          Interactive chat REPL: per-turn ToolRAG retrieval + load_skill
+│   ├── chat.rs          Interactive chat REPL: per-turn skill retrieval + activate_skill
 │   └── assistant_service.rs  High-level Q&A service
 ├── backends/
 │   ├── ollama.rs        Ollama backend (Responses API + embeddings + streaming)
@@ -131,9 +125,9 @@ src/
     ├── llm/
     │   ├── mod.rs       ResponseModel / EmbeddingModel traits
     │   └── types.rs     Domain types (InputItem, OutputItem, StreamEvent, etc.)
-    ├── retriever.rs     BM25 ToolRAG retrieval engine (dependency-free)
+    ├── retriever.rs     BM25 skill retrieval engine (dependency-free)
     └── skill/
-        ├── mod.rs       SkillRegistry with ToolRAG retrieve + load_skill
+        ├── mod.rs       SkillRegistry with skill retrieval + activate_skill
         ├── loader.rs    SKILL.md parser
         └── types.rs     SkillManifest, Skill
 ```
