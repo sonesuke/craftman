@@ -35,7 +35,9 @@
             gnused
             curl
             gitMinimal
-            gh
+            # gh is intentionally NOT provided by Nix so it can be upgraded
+            # independently of nixpkgs; scripts/setup.sh installs gh 2.94.0+
+            # from the official binary release into ~/.local/bin. See issue #17.
             cacert
             ripgrep
             unzip
