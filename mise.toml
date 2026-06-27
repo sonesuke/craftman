@@ -1,5 +1,5 @@
 [tasks.build]
-description = "Build dev container image with nix"
+description = "Build dev container image from Dockerfile"
 file = "scripts/build.sh"
 
 [tasks.up]
