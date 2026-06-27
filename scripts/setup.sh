@@ -1,6 +1,47 @@
 #!/bin/bash
 set -e
 
+# Install GitHub CLI (gh) from the official binary release.
+# gh is intentionally NOT managed by Nix (see flake.nix) so it can be upgraded
+# independently of nixpkgs' release cadence; the AFK workflow needs 2.94.0+ for
+# Issues 2.0 (native sub-issues and relationships). This script runs as user
+# 1000 (no root, no apt), so we install user-space into ~/.local/bin.
+GH_VERSION="2.95.0"   # pinned to the latest stable at implementation time
+GH_MINIMUM="2.94.0"   # minimum required; skip reinstall when gh is already >= this
+# ~/.local/bin must be on PATH for this script and for future shells. The .zshrc
+# generated below already prepends it; this export covers the current process.
+export PATH="$HOME/.local/bin:$PATH"
+
+gh_satisfied() {
+  command -v gh >/dev/null 2>&1 || return 1
+  local line current
+  line="$(gh --version 2>/dev/null | head -1)"   # "gh version X.Y.Z (date)"
+  current="${line#* version }"                   # drop "gh version " prefix
+  current="${current%% *}"                        # drop trailing " (date)"
+  [ -n "$current" ] || return 1
+  # current >= GH_MINIMUM iff GH_MINIMUM is the lowest of the two under sort -V
+  [ "$(printf '%s\n' "$GH_MINIMUM" "$current" | sort -V | head -1)" = "$GH_MINIMUM" ]
+}
+
+if gh_satisfied; then
+  echo "gh already installed: $(gh --version | head -1)"
+else
+  case "$(uname -m)" in
+    x86_64)  GH_ARCH="amd64" ;;
+    aarch64) GH_ARCH="arm64" ;;
+    *) echo "Unsupported architecture for gh: $(uname -m)" >&2; exit 1 ;;
+  esac
+  echo "Installing gh ${GH_VERSION} (linux_${GH_ARCH})..."
+  GH_TARBALL="gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz"
+  curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/${GH_TARBALL}" \
+    -o "/tmp/${GH_TARBALL}"
+  mkdir -p "$HOME/.local/bin"
+  tar -xzf "/tmp/${GH_TARBALL}" -C /tmp
+  install -m 0755 "/tmp/gh_${GH_VERSION}_linux_${GH_ARCH}/bin/gh" "$HOME/.local/bin/gh"
+  rm -rf "/tmp/${GH_TARBALL}" "/tmp/gh_${GH_VERSION}_linux_${GH_ARCH}"
+  echo "gh installed: $(gh --version | head -1)"
+fi
+
 # Configure git using GitHub noreply email and credential helper
 if command -v gh >/dev/null 2>&1 && gh auth status &>/dev/null; then
   gh auth setup-git
