@@ -16,7 +16,15 @@ The issue tracker and triage label vocabulary should have been provided to you â
 
 Check with the user that these seams match their expectations.
 
-3. Write the PRD using the template below, then publish it to the project issue tracker. Apply the `ready-for-agent` triage label - no need for additional triage.
+3. Write the PRD using the template below.
+
+4. Decide: **single-shot** or **decompose**. Ask whether the WHOLE PRD can ship as one issue that is BOTH:
+
+   - **completable in one iteration** (one worktree, one PR), AND
+   - **reviewable by a human in one pass.**
+
+   - **Single-shot (both yes):** publish the PRD to the issue tracker WITH the `ready-for-agent` label. No further triage is needed. Done.
+   - **Decompose (either no):** publish the PRD WITHOUT `ready-for-agent` â€” it becomes the **parent**. Then **activate the `decompose-prd` skill**, passing it the parent PRD issue number you just created. `decompose-prd` breaks the PRD into native sub-issues (each `ready-for-agent`); the AFK loop grabs the sub-issues, never the parent. The parent PRD closes automatically when its stacked branch merges to `main` (see `docs/agents/workflow.md` and ADR-0004).
 
 <prd-template>
 
