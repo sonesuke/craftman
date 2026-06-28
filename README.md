@@ -133,3 +133,4 @@ src/
 ```
 
 **Dependency flow:** `app` → `core` ← `backends` — the app layer only knows about core traits, not specific backends.
+<!-- afk single-shot smoke -->
