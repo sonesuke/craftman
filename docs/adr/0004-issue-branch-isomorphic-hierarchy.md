@@ -26,14 +26,22 @@ depth of the issue tree:
 the final parent PR when it detects that all of a parent's sub-issues are closed.
 Closing is always a PR merge; `afk/run.sh` never closes an issue itself.
 
+Because GitHub's `Closes #N` only fires on a merge to the default branch, a
+sub-issue's PR (which targets `prd-<parent>`, not `main`) does NOT auto-close its
+issue. The `close-sub-issue-on-merge` GitHub Action closes the sub-issues named in
+the PR body when a PR merges into a `prd-*` branch. The parent, by contrast, closes
+via the standard `Closes #<parent>` when its `prd-<parent>` → `main` PR merges.
+
 ## Considered options
 
 - **Sub-issue PRs straight to `main` (single layer):** rejected — the parent has no
   PR, so its close needs an exceptional path (a GitHub Action or a manual step),
   splitting "done" into two mechanisms and breaking "close = PR merge".
 - **GitHub Action that auto-closes the parent when all sub-issues close:** rejected —
-  it adds workflow infrastructure outside the `run.sh`/skills scope, and close would
-  no longer be driven by a PR merge.
+  the parent closes via its own `prd-<parent>` → `main` PR merge (standard
+  `Closes #<parent>`), so no Action is needed for the parent. (An Action IS used to
+  close *sub-issues* — see Decision — because their PRs target `prd-<parent>`, where
+  the standard mechanism does not fire.)
 - **Never close the parent (leave it open as a progress tracker):** rejected — "is
   this PRD done?" must be answerable from the parent's `closed` state, queryably.
 
@@ -47,3 +55,7 @@ Closing is always a PR merge; `afk/run.sh` never closes an issue itself.
 - Review is two-tier: each sub-issue PR is reviewed, then the final parent PR is a
   full code review (not merely an integration gate).
 - Single-shot PRDs are unaffected — they remain a single layer straight to `main`.
+- A GitHub Action (`close-sub-issue-on-merge`) closes sub-issues when their PR merges
+  into a `prd-*` branch, because the standard `Closes #N` does not fire for
+  non-default-branch merges. The parent still closes via the standard mechanism on
+  its `prd-<parent>` → `main` merge.

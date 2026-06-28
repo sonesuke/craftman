@@ -82,9 +82,12 @@ it merges into `main`.
 
 ## Rules
 
-- **Done is closed, and closing is a PR merge.** An issue is done when it is closed,
-  and it closes when the PR carrying `Closes #N` merges. This holds for sub-issues,
-  single-shot PRDs, and parents alike. `afk/run.sh` never closes an issue.
+- **Done is closed, and closing is a PR merge.** An issue is done when it is closed.
+  A single-shot PRD and a parent close via the standard `Closes #N` when their PR
+  merges to `main`. A sub-issue is closed by the `close-sub-issue-on-merge` GitHub
+  Action when its PR merges into `prd-<parent>` — the standard `Closes #N` only fires
+  on the default branch, so it would not close a sub-issue whose PR targets a parent
+  branch. `afk/run.sh` never closes an issue.
 - **The branch hierarchy mirrors the issue hierarchy** (see
   [ADR-0004](../adr/0004-issue-branch-isomorphic-hierarchy.md)): single-shot PRDs are
   one layer (`issue-<N>` → `main`); decomposed PRDs are two (`issue-<child>` →
