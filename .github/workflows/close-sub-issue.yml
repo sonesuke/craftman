@@ -1,0 +1,47 @@
+name: close-sub-issue-on-merge
+
+# GitHub's standard "Closes #N" / "Fixes #N" only closes an issue when the PR
+# is merged into the DEFAULT branch. In the AFK stacked-branch hierarchy
+# (ADR-0004), a sub-issue PR targets the parent branch prd-<parent>, not main,
+# so its issue is NOT auto-closed on merge. This workflow closes the sub-issues
+# named in the PR body when a PR merges into a prd-* branch, so that
+# afk/run.sh's Step 0 ("all sub-issues closed") can fire and open the final
+# prd-<parent> -> main PR.
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  close-sub-issues:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Close sub-issues referenced in the PR body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          BODY: ${{ github.event.pull_request.body }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          # Only act on merges into parent branches (prd-*); merges into main
+          # already close their issues via the standard mechanism.
+          case "$BASE" in
+            prd-*) ;;
+            *) echo "base=$BASE is not a parent branch; nothing to do"; exit 0 ;;
+          esac
+          if [ -z "$BODY" ]; then
+            echo "no PR body; nothing to close"; exit 0
+          fi
+          # Extract issue numbers from "Closes #N" / "Fixes #N" / "Resolves #N".
+          numbers=$(printf '%s\n' "$BODY" | grep -oiE '(closes|fixes|resolves) #[0-9]+' | grep -oE '[0-9]+' | sort -u)
+          if [ -z "$numbers" ]; then
+            echo "no sub-issues referenced in body; nothing to close"; exit 0
+          fi
+          for n in $numbers; do
+            echo "closing #$n"
+            gh issue close "$n" -R "$REPO" || echo "could not close #$n (maybe already closed or not an issue)"
+          done
