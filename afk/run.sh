@@ -76,7 +76,7 @@ for ((i=1; i<=$1; i++)); do
     --jq '[.[] | select(.subIssues.totalCount > 0) | .number][]')
   for P in $parents; do
     all_closed=$(gh issue view "$P" --json subIssues \
-      --jq '[.subIssues[].state] | (length == 0) or all(. == "CLOSED")')
+      --jq '[.subIssues.nodes[].state] | (length == 0) or all(. == "CLOSED")')
     if [ "$all_closed" = "true" ] \
        && ! gh pr list --state open --head "prd-$P" --json number | grep -q '"number"'; then
       git show-ref --verify --quiet "refs/heads/prd-$P" || git branch "prd-$P" main
