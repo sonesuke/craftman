@@ -56,11 +56,16 @@ These files are gitignored — write them but do NOT git add or commit them. \
 Do NOT close the issue."
   fi
 
+  # --no-cd on both wt switch calls: this loop is non-interactive automation —
+  # the agent runs in the worktree via --execute, so no parent-shell cd is
+  # wanted. It silences wt's "shell integration not installed" warning (wt's
+  # shell function is absent in this subshell) without affecting hooks or the
+  # --execute command. Do not remove. See issue #33.
   set +e
   if git show-ref --verify --quiet "refs/heads/issue-$N"; then
-    wt switch --yes -x claude "issue-$N" -- --dangerously-skip-permissions -p "$PROMPT"
+    wt switch --no-cd --yes -x claude "issue-$N" -- --dangerously-skip-permissions -p "$PROMPT"
   else
-    wt switch --create --yes -x claude "issue-$N" -- --dangerously-skip-permissions -p "$PROMPT"
+    wt switch --no-cd --create --yes -x claude "issue-$N" -- --dangerously-skip-permissions -p "$PROMPT"
   fi
   rc=$?
   set -e
