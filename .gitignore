@@ -1,1 +1,4 @@
 /target
+
+# AFK producer's PR title/body temp files (worktree-local, never committed)
+.afk/
