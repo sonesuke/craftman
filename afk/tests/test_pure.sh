@@ -12,6 +12,9 @@
 #   filter_needs_review:  keep only the PRs carrying the needs-review label.
 #   review_verdict_action: two-strike verdict dispatch — given the current review
 #                          round and the agent's verdict, emit action + round.
+#   review_mergeability_gate: the review loop's first pre-merge gate — given a
+#                             PR's mergeable + mergeStateStatus, emit the gate
+#                             decision (pass | auto-update | needs-rework | wait).
 #   pr_head_to_issue_number:  issue-<N> / prd-<N> head-ref -> the number.
 #
 # To add a pure helper: source afk/lib/pure.sh, feed it canned input, and assert
@@ -83,6 +86,12 @@ check_needs_review() {
 check_verdict() {
   local name="$1" round="$2" verdict="$3" expected="$4"
   expect_eq "$name" "$expected" "$(review_verdict_action "$round" "$verdict")"
+}
+
+# review_mergeability_gate: mergeable + mergeStateStatus on args, decision on stdout.
+check_mergeability() {
+  local name="$1" mergeable="$2" state="$3" expected="$4"
+  expect_eq "$name" "$expected" "$(review_mergeability_gate "$mergeable" "$state")"
 }
 
 # pr_head_to_issue_number: head-ref on stdin, number on stdout.
@@ -242,6 +251,42 @@ check_verdict "needs-human after a send-back still resets the round" \
 
 check_verdict "unknown verdict is reported, never acts as a send-back" \
   0 bogus "unknown 0"
+
+# --- review_mergeability_gate (first pre-merge gate) -------------------------
+# mergeable + mergeStateStatus -> gate decision. Every cell of the decision
+# table: CLEAN -> pass (hand to the CI gate), BEHIND -> auto-update (rebase,
+# no strike consumed), CONFLICTING/DIRTY -> needs-rework (route to producer),
+# UNKNOWN -> wait (GitHub still computing, don't misroute), UNSTABLE -> pass (a
+# CI concern the CI gate owns).
+
+check_mergeability "MERGEABLE+CLEAN -> pass to the CI gate" \
+  MERGEABLE CLEAN "pass"
+
+check_mergeability "MERGEABLE+BEHIND -> auto-update (rebase, no strike)" \
+  MERGEABLE BEHIND "auto-update"
+
+check_mergeability "MERGEABLE+DIRTY -> needs-rework" \
+  MERGEABLE DIRTY "needs-rework"
+
+check_mergeability "MERGEABLE+UNSTABLE -> pass (CI concern, owned by CI gate)" \
+  MERGEABLE UNSTABLE "pass"
+
+check_mergeability "CONFLICTING -> needs-rework regardless of state" \
+  CONFLICTING DIRTY "needs-rework"
+
+check_mergeability "CONFLICTING+CLEAN still -> needs-rework" \
+  CONFLICTING CLEAN "needs-rework"
+
+check_mergeability "UNKNOWN -> wait (GitHub still computing)" \
+  UNKNOWN BEHIND "wait"
+
+# Defensive defaults for inputs GitHub can produce but the table does not name.
+
+check_mergeability "MERGEABLE+BLOCKED -> pass (mergeable is the dominant signal)" \
+  MERGEABLE BLOCKED "pass"
+
+check_mergeability "empty mergeable -> wait (treat unrecognized defensively)" \
+  "" CLEAN "wait"
 
 # --- pr_head_to_issue_number -------------------------------------------------
 

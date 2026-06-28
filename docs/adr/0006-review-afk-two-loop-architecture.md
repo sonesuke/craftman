@@ -32,7 +32,9 @@ rework) — rework returns here, and the implementation loop picks it up again.
 
 **Verdict → action** (in the consumer loop):
 
-- mergeable → the control layer (`review.sh`) merges after CI is green;
+- mergeable → the control layer (`review.sh`) runs two pre-merge gates in order
+  — mergeability (auto-rebase a BEHIND branch, route CONFLICTING to the producer)
+  then CI-green — and merges only after both pass;
 - needs a human → `ready-for-human`;
 - needs rework → `ready-for-agent` (sent back to the producer).
 
@@ -40,6 +42,32 @@ rework) — rework returns here, and the implementation loop picks it up again.
 follow the rule already established for PR opening: the agent decides, the
 `*.sh` loop acts (open PR, transition labels, merge). No agent holds merge or
 PR-open authority.
+
+**Mergeability gate — mechanical branch hygiene (review loop).** Before a
+content-approved PR reaches the merge, the review loop's control layer runs a
+second detect→route gate on `gh pr view --json mergeable,mergeStateStatus`:
+
+- **CLEAN / mergeable** → pass to the existing CI-green gate.
+- **BEHIND** (mergeable but stale) → the control layer rebases the PR's own head
+  onto its base (`baseRefName` — `main` for a single-shot, `prd-<parent>` for a
+  sub-issue, per ADR-0004) and `git push --force-with-lease`s the head only, then
+  leaves the PR at `needs-review` so the next iteration re-reviews the rebased
+  branch. No producer↔review round (strike) is consumed — rebase is judgment-free.
+- **CONFLICTING / DIRTY** → route to the producer as `needs-rework` (genuine
+  rework), with a PR comment instructing rebase + conflict resolution + re-push.
+- **UNKNOWN** (GitHub still computing) → poll briefly, then leave at
+  `needs-review` rather than misroute.
+
+This extends the "agents only judge; the loop acts" invariant to let the review
+loop's control layer perform **mechanical branch hygiene** (rebase of the PR's
+own head) — an exception to "side effects = labels + merge only". It is
+justified because rebase is judgment-free and prevents the strike-waste that is
+the core complaint: a stale or conflicting PR otherwise burns one of only two
+rework rounds on a mechanically-fixable problem, or escalates to a human
+unnecessarily. The decision is the pure helper
+`review_mergeability_gate` (unit-tested like `review_verdict_action`); all
+gh/git I/O stays in the control layer. Semantic conflict resolution is
+deliberately out of scope — that stays with the producer via `needs-rework`.
 
 **Two-strike loop guard.** A PR sent back twice in a row is force-transitioned
 to `ready-for-human` rather than ping-ponging forever. A human's touch resets
@@ -87,4 +115,5 @@ loop**.
 **accepted** — the producer-side handoff (`.afk/pr_title`, `.afk/pr_body`,
 step2/step3) landed in PR #37 (issue #38); the review loop (`afk/review.sh`),
 the rename to `implement.sh`, the `needs-review` label, and the two-strike guard
-landed in PR #39 (issue #39).
+landed in PR #39 (issue #39). **Amended** by issue #41 to add the review loop's
+mergeability gate and the mechanical-rebase side effect documented above.
