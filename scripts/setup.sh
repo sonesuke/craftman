@@ -137,6 +137,9 @@ echo "Installing worktrunk..."
 cargo binstall -y worktrunk
 export PATH="$HOME/.cargo/bin:$PATH"
 wt --yes config shell install zsh
+# Install the Worktrunk plugin for Claude Code (Claude <-> wt integration).
+# Runs after shell integration so `wt` is on PATH.
+wt --yes config plugins claude install
 
 # Configure gh auth for git
 if command -v gh >/dev/null 2>&1; then
