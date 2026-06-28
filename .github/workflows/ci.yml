@@ -16,10 +16,13 @@ jobs:
       - run: mise run pre-commit
       - run: mise run test-e2e
 
-  # The AFK loop's pure-function seam (afk/lib/, tested by afk/tests/). Kept out
-  # of mise run pre-commit so the local developer loop stays Rust-only and fast;
-  # CI runs it on every PR to main so the seam cannot silently rot.
-  # See ADR-0005 and docs/agents/workflow.md.
+  # The AFK pure-function seam (afk/lib/, tested by afk/tests/). This single
+  # shared seam covers BOTH loops: implement.sh's helpers (grabbable filter,
+  # open-PR pruning, worktree resolution) and review.sh's (needs-review filter,
+  # verdict dispatch, two-strike round counter). Kept out of mise run pre-commit
+  # so the local developer loop stays Rust-only and fast; CI runs it on every PR
+  # to main so the seam cannot silently rot. See ADR-0005, ADR-0006, and
+  # docs/agents/workflow.md.
   afk-pure-tests:
     name: AFK pure-function tests
     runs-on: ubuntu-latest

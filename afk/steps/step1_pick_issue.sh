@@ -1,13 +1,40 @@
 # afk/steps/step1_pick_issue.sh — Step 1 of the AFK iteration.
 #
-# Filter grabbable ready-for-agent candidates mechanically (filter_grabbable,
-# then drop those whose branch already has an open PR), then ask Claude to pick
-# the single highest-priority one. Sets the global N to the picked issue number.
+# Pick this iteration's work. Rework takes precedence over new work: a
+# ready-for-agent PR (sent back by the review loop) is in flight, so finish it
+# before starting fresh — pick the oldest such PR deterministically (sets
+# REWORK=1, PR_NUM, N). Otherwise filter grabbable ready-for-agent issues
+# mechanically (filter_grabbable, then drop those whose branch already has an
+# open PR) and ask Claude to pick the single highest-priority one (REWORK=0,
+# sets N). PR_NUM is the open PR number for a rework PR; empty for new work.
 #
 # Exits the script (exit 0) when nothing is grabbable, matching the original
 # early-exit behaviour. Side-effecting: calls gh/claude.
 step_pick_issue() {
-  local raw closed_json open_prs candidates pick
+  local raw closed_json open_prs candidates pick rework_json prnum headref
+  REWORK=0
+  PR_NUM=""
+
+  # --- Rework first: ready-for-agent PRs sent back by the review loop. ----
+  # Smallest PR number = oldest in-flight rework. headRefName maps to the issue
+  # the PR implements (issue-<N> or prd-<parent>).
+  rework_json=$(gh pr list --state open --label ready-for-agent \
+    --json number,headRefName)
+  if [ "$rework_json" != "[]" ]; then
+    read -r prnum headref <<EOF
+$(printf '%s' "$rework_json" | jq -r 'sort_by(.number) | .[0] | "\(.number) \(.headRefName)"')
+EOF
+    N=$(printf '%s\n' "$headref" | pr_head_to_issue_number)
+    if [ -n "$N" ] && [ -n "$prnum" ]; then
+      REWORK=1
+      PR_NUM="$prnum"
+      echo "Rework: picked PR #$PR_NUM (issue #$N) sent back for rework."
+      return 0
+    fi
+    # headRef didn't map to an issue number; fall through to new-work pick.
+  fi
+
+  # --- New work: grabbable ready-for-agent issues. -----------------------
   raw=$(gh issue list --state open --label ready-for-agent \
     --json number,title,subIssues,blockedBy)
   closed_json=$(gh issue list --state closed --json number --jq '[.[].number]')

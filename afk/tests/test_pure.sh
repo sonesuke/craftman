@@ -9,6 +9,10 @@
 #   pr_url_to_number:   extract the trailing numeric PR number from a PR URL.
 #   worktree_path_for_branch:  resolve a branch name to its worktree path from
 #                              `git worktree list --porcelain` output.
+#   filter_needs_review:  keep only the PRs carrying the needs-review label.
+#   review_verdict_action: two-strike verdict dispatch — given the current review
+#                          round and the agent's verdict, emit action + round.
+#   pr_head_to_issue_number:  issue-<N> / prd-<N> head-ref -> the number.
 #
 # To add a pure helper: source afk/lib/pure.sh, feed it canned input, and assert
 # the survivors via expect_eq (the single comparison primitive below).
@@ -65,6 +69,26 @@ check_worktree() {
   local name="$1" branch="$2" input="$3" expected="$4"
   expect_eq "$name" "$expected" \
     "$(printf '%s' "$input" | WORKTREE_BRANCH="$branch" worktree_path_for_branch)"
+}
+
+# filter_needs_review: `gh pr list` JSON on stdin; keep only needs-review PRs.
+# Asserted by the surviving numbers — the contract is WHICH PRs survive.
+check_needs_review() {
+  local name="$1" input="$2" expected="$3"
+  expect_eq "$name" "$expected" \
+    "$(printf '%s' "$input" | filter_needs_review | jq -c '[.[].number]')"
+}
+
+# review_verdict_action: round + verdict on args, "<action> <round>" on stdout.
+check_verdict() {
+  local name="$1" round="$2" verdict="$3" expected="$4"
+  expect_eq "$name" "$expected" "$(review_verdict_action "$round" "$verdict")"
+}
+
+# pr_head_to_issue_number: head-ref on stdin, number on stdout.
+check_head() {
+  local name="$1" ref="$2" expected="$3"
+  expect_eq "$name" "$expected" "$(printf '%s\n' "$ref" | pr_head_to_issue_number)"
 }
 
 # --- filter_grabbable --------------------------------------------------------
@@ -173,6 +197,61 @@ check_worktree "returns nothing for a branch with no worktree" \
 
 check_worktree "returns nothing when WORKTREE_BRANCH is empty" \
   "" "$WT_PORCELAIN" ""
+
+# --- filter_needs_review -----------------------------------------------------
+# `gh pr list --json number,headRefName,labels` on stdin; keep needs-review PRs.
+read -r -d '' PR_LIST <<'JSON' || true
+[
+  {"number":10,"headRefName":"issue-10","labels":[{"name":"needs-review"}]},
+  {"number":11,"headRefName":"issue-11","labels":[{"name":"ready-for-human"}]},
+  {"number":12,"headRefName":"prd-4","labels":[{"name":"needs-review"},{"name":"afk-review-1"}]},
+  {"number":13,"headRefName":"issue-13","labels":[]}
+]
+JSON
+
+check_needs_review "keeps only the needs-review PRs (issue and parent alike)" \
+  "$PR_LIST" '[10,12]'
+
+check_needs_review "no needs-review PRs -> empty" \
+  '[{"number":1,"headRefName":"issue-1","labels":[{"name":"ready-for-human"}]}]' '[]'
+
+check_needs_review "empty input -> empty output" '[]' '[]'
+
+# --- review_verdict_action (two-strike guard) --------------------------------
+# Verdict -> action + stored round. needs-rework at round 0 sends back (to-agent,
+# round becomes 1); a second consecutive needs-rework (round 1) force-transitions
+# to-human. mergeable and needs-human always reset the round to 0.
+
+check_verdict "mergeable -> merge, round resets" \
+  0 mergeable "merge 0"
+
+check_verdict "needs-human -> to-human, round resets" \
+  0 needs-human "to-human 0"
+
+check_verdict "needs-rework from round 0 -> 1st send-back to producer" \
+  0 needs-rework "to-agent 1"
+
+check_verdict "needs-rework from round 1 -> two-strike, force to human" \
+  1 needs-rework "to-human 0"
+
+check_verdict "mergeable after a send-back still resets the round" \
+  1 mergeable "merge 0"
+
+check_verdict "needs-human after a send-back still resets the round" \
+  1 needs-human "to-human 0"
+
+check_verdict "unknown verdict is reported, never acts as a send-back" \
+  0 bogus "unknown 0"
+
+# --- pr_head_to_issue_number -------------------------------------------------
+
+check_head "issue-<N> head-ref -> N" "issue-42" "42"
+
+check_head "prd-<parent> head-ref -> parent N" "prd-7" "7"
+
+check_head "non-numeric suffix -> nothing" "issue-foo" ""
+
+check_head "unrecognized shape -> nothing" "feature-branch" ""
 
 echo
 echo "passed=$pass failed=$fail"

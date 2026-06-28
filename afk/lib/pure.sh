@@ -75,3 +75,57 @@ worktree_path_for_branch() {
     printf '%s\n' "$wt"
   fi
 }
+
+# Read a `gh pr list --json number,headRefName,labels` blob on stdin; emit a
+# compact JSON array of {number, headRefName} for the PRs carrying the
+# needs-review label only. The review loop's pick source — the PR-side mirror of
+# the implementation loop's filter_grabbable over issues.
+filter_needs_review() {
+  jq -c 'map(select(.labels | map(.name) | index("needs-review")) | {number, headRefName})'
+}
+
+# Pure two-strike verdict dispatch (D7). Given the PR's current review round
+# (0 = never sent back by the review agent, 1 = sent back once already) and the
+# review agent's verdict (mergeable | needs-human | needs-rework), print
+# "<action> <store_round>" on stdout, where:
+#   merge      — merge after CI is green (round resets; the PR is done)
+#   to-human   — label ready-for-human (round resets; a human's touch)
+#   to-agent   — send back to ready-for-agent for rework (round becomes 1)
+# The two-strike guard fires on the SECOND consecutive needs-rework (round 1):
+# it force-transitions to-human instead of to-agent, ending producer<->reviewer
+# ping-pong. store_round is the round the caller should leave on the PR
+# (0 = drop the afk-review-1 counter label, 1 = set it). Pure — the caller does
+# all gh/label/merge I/O around it.
+review_verdict_action() {
+  local round="${1:-0}" verdict="${2:-}"
+  case "$verdict" in
+    mergeable)
+      printf 'merge 0\n' ;;
+    needs-human)
+      printf 'to-human 0\n' ;;
+    needs-rework)
+      if [ "$round" -ge 1 ]; then
+        printf 'to-human 0\n'   # two-strike: 2nd consecutive send-back -> human
+      else
+        printf 'to-agent 1\n'   # 1st send-back -> producer reworks
+      fi
+      ;;
+    *)
+      printf 'unknown 0\n' ;;
+  esac
+}
+
+# Read a PR head-ref name on stdin (e.g. "issue-42", "prd-7") and emit the
+# trailing issue/parent number it was branched for, or nothing for an
+# unrecognized or non-numeric shape. issue-<N> sub-issue PRs and prd-<parent>
+# parent PRs each carry exactly one number; the review loop uses it to fetch the
+# spec issue the PR implements.
+pr_head_to_issue_number() {
+  local ref
+  IFS= read -r ref || true
+  case "$ref" in
+    issue-*|prd-*)
+      printf '%s\n' "${ref##*-}" | grep -oE '^[0-9]+$' || true
+      ;;
+  esac
+}

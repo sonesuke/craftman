@@ -5,7 +5,7 @@ name: close-sub-issue-on-merge
 # (ADR-0004), a sub-issue PR targets the parent branch prd-<parent>, not main,
 # so its issue is NOT auto-closed on merge. This workflow closes the sub-issues
 # named in the PR body when a PR merges into a prd-* branch, so that
-# afk/run.sh's Step 0 ("all sub-issues closed") can fire and open the final
+# afk/implement.sh's Step 0 ("all sub-issues closed") can fire and open the final
 # prd-<parent> -> main PR.
 
 on:

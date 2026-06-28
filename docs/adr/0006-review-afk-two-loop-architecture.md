@@ -75,14 +75,16 @@ loop**.
 - Renames `afk/run.sh` → `afk/implement.sh` and adds `afk/review.sh`; the
   existing entry/steps/lib split (ADR-0005, issue #32) carries to the review
   loop, sharing `afk/lib/`.
-- The label set grows by one (`needs-review`) and `ready-for-human`'s meaning
-  narrows; `docs/agents/workflow.md` and `triage-labels.md` move with it.
-- This ADR records the **target** architecture. Its implementation is a
-  follow-up issue: this PR ships only the producer half (the PR-format handoff
-  that fixes #35 → #36).
+- The label set grows by one (`needs-review`) and a round-marker (`afk-review-1`);
+  `ready-for-human`'s meaning narrows. `docs/agents/workflow.md` and
+  `triage-labels.md` move with it.
+- The implementation loop picks up rework: a PR the review loop sends back to
+  `ready-for-agent` is reworked and returned to `needs-review`, so the
+  two-strike guard can actually fire.
 
 ## Status
 
-**proposed** — the producer-side handoff (`.afk/pr_title`, `.afk/pr_body`,
-step2/step3) lands in this PR; the review loop, the rename to `implement.sh`,
-and the new labels land in a follow-up issue.
+**accepted** — the producer-side handoff (`.afk/pr_title`, `.afk/pr_body`,
+step2/step3) landed in PR #37 (issue #38); the review loop (`afk/review.sh`),
+the rename to `implement.sh`, the `needs-review` label, and the two-strike guard
+landed in PR #39 (issue #39).

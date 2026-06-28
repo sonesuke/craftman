@@ -1,12 +1,12 @@
-# Deliberate duplication between process docs and the run.sh code header
+# Deliberate duplication between process docs and the implement.sh code header
 
 ## Context
 
-`afk/run.sh` and the process documentation (`docs/agents/workflow.md`, ADR-0004)
+`afk/implement.sh` and the process documentation (`docs/agents/workflow.md`, ADR-0004)
 describe overlapping facts about the AFK loop: the Step 0–3 sequence, the branch
 hierarchy (`issue-<N>` → `prd-<parent>` → `main`), and the rule that the loop
 never closes an issue. Before the entry/steps/lib split this content was
-**triplicated** — the 37-line `run.sh` header restated the full architecture
+**triplicated** — the 37-line `implement.sh` header restated the full architecture
 rationale already in docs, and the three copies had begun to drift.
 
 The split (issue #32) removed the bulk of that duplication by shrinking the
@@ -30,7 +30,7 @@ audience:
   *why/architecture***: the process vocabulary, why the loop never closes
   issues, why branches mirror the issue hierarchy. This is the single place to
   update reasoning and the only place rationale lives.
-- **The `run.sh` header is authoritative for the *what/usage* of this one
+- **The `implement.sh` header is authoritative for the *what/usage* of this one
   file**: a one-paragraph statement that one iteration runs Step 0→3 in order, a
   one-line table of contents per step, how to run it, prerequisites, the
   sourceable-test note, and a single pointer into the docs. It states only what
@@ -44,7 +44,7 @@ process docs) and neither is derived from the other.
 ## Considered options
 
 - **Single source of truth — header is a bare pointer, no summary:** rejected.
-  A maintainer who opens `run.sh` needs a one-glance picture of the iteration
+  A maintainer who opens `implement.sh` needs a one-glance picture of the iteration
   without context-switching to docs; a pointer alone makes the script
   unreadable in isolation.
 - **Single source of truth — keep all rationale in the header, delete the
@@ -68,6 +68,6 @@ process docs) and neither is derived from the other.
   this ADR is the stop-sign. Deleting the header summary strands code readers;
   deleting the docs removes the only authoritative home of the process
   vocabulary and rationale.
-- This decision is scoped to `run.sh` ↔ process docs. It is not a license to
+- This decision is scoped to `implement.sh` ↔ process docs. It is not a license to
   duplicate freely elsewhere; it records a specific, bounded trade-off made for
   reader ergonomics at the code/docs boundary.

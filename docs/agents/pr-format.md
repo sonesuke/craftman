@@ -2,8 +2,9 @@
 
 The contract between the **producer** (the implementation agent that writes a
 PR's title and body into `.afk/pr_title` / `.afk/pr_body`) and the **reviewer**
-(the review agent that checks a PR against this spec). Every PR the AFK loop
-opens conforms to this; the producer writes it, the reviewer enforces it.
+(the review agent that checks a PR against this spec). Every PR the
+implementation loop opens conforms to this; the producer writes it, the
+reviewer enforces it.
 
 This is a *process* document. The product-domain language lives in
 [CONTEXT.md](../../CONTEXT.md), and the AFK workflow lives in
@@ -11,9 +12,10 @@ This is a *process* document. The product-domain language lives in
 
 ## Why a spec
 
-Before this spec, `afk/run.sh` opened every PR with `--title "Closes #N"
---body "Closes #N"` — a title and body that said nothing. The reviewer (human
-or agent) had to reconstruct the change from the diff. [PR #35](https://github.com/sonesuke/craftman/pull/35)
+Before this spec, the implementation loop (then `afk/run.sh`) opened every PR
+with `--title "Closes #N" --body "Closes #N"` — a title and body that said
+nothing. The reviewer (human or agent) had to reconstruct the change from the
+diff. [PR #35](https://github.com/sonesuke/craftman/pull/35)
 was the symptom; [PR #36](https://github.com/sonesuke/craftman/pull/36) is the
 shape we want. The producer knows things no one else does (what it verified,
 what it deliberately left as-is), and the PR is where that knowledge is handed
@@ -68,12 +70,12 @@ records the deliberate docs↔header overlap.
 Step functions read the entry's globals … Kept as-is to stay a pure refactor.
 ```
 
-## How the loop uses it
+## How the loops use it
 
 - The producer agent is instructed (in `afk/steps/step2_run_agent.sh`) to write
   `.afk/pr_title` and `.afk/pr_body` per this spec; the files are gitignored.
 - `afk/steps/step3_open_pr.sh` reads them and opens the PR. If either is
   missing it re-runs the producer — it never falls back to a bare `Closes #N`.
-- The review agent (planned — see
+- The review agent (run by `afk/review.sh`; see
   [ADR-0006](../adr/0006-review-afk-two-loop-architecture.md)) checks every PR
   against this spec as one of its two duties; the other is content correctness.
