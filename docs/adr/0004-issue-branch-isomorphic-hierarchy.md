@@ -3,7 +3,7 @@
 ## Context
 
 The AFK workflow decomposes a large PRD into native GitHub sub-issues. The parent
-PRD is a **control issue**: `afk/run.sh` never grabs it (it carries no
+PRD is a **control issue**: `afk/implement.sh` never grabs it (it carries no
 `ready-for-agent` label and has sub-issues), so no branch, worktree, or PR is ever
 created for it. That left the parent's "done" undefined — the single rule the
 workflow follows ("done = PR merge = issue close, via `Closes #N`") had no PR to hang
@@ -22,9 +22,9 @@ depth of the issue tree:
   `prd-<parent>` (`Closes #<child>`). Once all sub-issues are closed, `prd-<parent>`
   → PR to `main` (`Closes #<parent>`).
 
-`afk/run.sh` creates `prd-<parent>` lazily on the first sub-issue it grabs, and opens
+`afk/implement.sh` creates `prd-<parent>` lazily on the first sub-issue it grabs, and opens
 the final parent PR when it detects that all of a parent's sub-issues are closed.
-Closing is always a PR merge; `afk/run.sh` never closes an issue itself.
+Closing is always a PR merge; `afk/implement.sh` never closes an issue itself.
 
 Because GitHub's `Closes #N` only fires on a merge to the default branch, a
 sub-issue's PR (which targets `prd-<parent>`, not `main`) does NOT auto-close its
@@ -47,9 +47,9 @@ via the standard `Closes #<parent>` when its `prd-<parent>` → `main` PR merges
 
 ## Consequences
 
-- `afk/run.sh` gains parent-branch management and final-parent-PR automation
+- `afk/implement.sh` gains parent-branch management and final-parent-PR automation
   (detect all-sub-issues-closed → open the `prd-<parent>` → `main` PR with
-  `ready-for-human`).
+  `needs-review`).
 - Sub-issue PRs target `prd-<parent>`, which advances as sub-issues merge; later
   sub-issues may need to rebase onto the updated parent branch.
 - Review is two-tier: each sub-issue PR is reviewed, then the final parent PR is a
