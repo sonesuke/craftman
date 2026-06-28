@@ -92,10 +92,24 @@ _Avoid_: reviewer bot
 
 **verdict**:
 The review agent's judgement, one of `mergeable`, `needs-human`, or `needs-rework`.
-The pure dispatch (`review_verdict_action`) maps a verdict plus the PR's review
-round to an action; the side effects (merge, label transitions) live in the loop's
-control layer.
+A `mergeable` verdict then runs the loop's two pre-merge gates (see
+**mergeability gate** and the CI-green gate); the pure dispatch
+(`review_verdict_action`) maps a verdict plus the PR's review round to an action,
+and the side effects (merge, label transitions) live in the loop's control layer.
 _Avoid_: decision, ruling
+
+**mergeability gate**:
+The review loop's FIRST pre-merge gate, run only on a `mergeable` verdict before
+the CI-green gate. It reads `gh pr view --json mergeable,mergeStateStatus` and
+the pure `review_mergeability_gate` decides: `CLEAN`/`UNSTABLE` → pass to the CI
+gate; `BEHIND` → the control layer rebases the PR's own head onto its base
+(`baseRefName`) and `--force-with-lease` re-pushes, then re-reviews without
+consuming a strike; `CONFLICTING`/`DIRTY` → route to the producer as
+`needs-rework` (with a rework instruction comment); `UNKNOWN` → leave at
+`needs-review` and re-check next iteration. The mechanical rebase is a deliberate
+exception to "side effects = labels + merge" (see
+[ADR-0006](../adr/0006-review-afk-two-loop-architecture.md)).
+_Avoid_: merge check, rebase bot
 
 **send back**:
 The review loop's `needs-rework` action: the PR returns to `ready-for-agent` and the
@@ -149,7 +163,11 @@ it merges into `main`.
   `main`.
 - **Agents only judge; the loops act.** Side effects — opening a PR, transitioning
   labels, merging — live in the `*.sh` control layer, never in an agent prompt. The
-  review loop (never an agent) performs `gh pr merge`, after CI is green.
+  review loop (never an agent) runs two pre-merge gates in order before merging:
+  the **mergeability gate** (rebase a BEHIND branch onto its base and re-push, or
+  route CONFLICTING back to the producer), then the CI-green gate; then it performs
+  `gh pr merge`. The mergeability gate's rebase is a deliberate exception to "side
+  effects = labels + merge" (see [ADR-0006](../adr/0006-review-afk-two-loop-architecture.md)).
 - **Parent PRs are not special.** The final `prd-<parent>` → `main` PR flows through
   `needs-review` like any other; if its integration review is too heavy for the
   agent, it falls to `ready-for-human` via the normal verdict path.

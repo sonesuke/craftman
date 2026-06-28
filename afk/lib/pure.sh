@@ -115,6 +115,38 @@ review_verdict_action() {
   esac
 }
 
+# Pure mergeability-gate decision for the review loop's first pre-merge gate.
+# Given a PR's GitHub `mergeable` (MERGEABLE | CONFLICTING | UNKNOWN) and
+# `mergeStateStatus` (CLEAN | BEHIND | DIRTY | UNSTABLE | ...), print exactly one
+# of:
+#   pass          — no mergeability objection; hand to the CI-green gate.
+#   auto-update   — mergeable but stale (BEHIND): the control layer rebases the
+#                   PR's own head onto its base and re-pushes, then re-reviews.
+#                   No producer/review round (strike) is consumed.
+#   needs-rework  — CONFLICTING or DIRTY: route to the producer to resolve.
+#   wait          — UNKNOWN (GitHub still computing) or unrecognized: don't
+#                   guess; leave at needs-review and re-check next iteration.
+# Decision table (the whole contract): MERGEABLE+CLEAN -> pass,
+# MERGEABLE+BEHIND -> auto-update, MERGEABLE+DIRTY -> needs-rework,
+# MERGEABLE+UNSTABLE -> pass (a CI concern, owned by the CI gate),
+# CONFLICTING -> needs-rework, UNKNOWN -> wait. All gh/git I/O lives in the
+# control layer (review_act_verdict) around this pure function.
+review_mergeability_gate() {
+  local mergeable="${1:-UNKNOWN}" state="${2:-}"
+  case "$mergeable" in
+    MERGEABLE)
+      case "$state" in
+        BEHIND) printf 'auto-update\n' ;;
+        DIRTY) printf 'needs-rework\n' ;;
+        CLEAN|UNSTABLE) printf 'pass\n' ;;
+        *) printf 'pass\n' ;;  # mergeable with an unrecognized refinement: no objection
+      esac
+      ;;
+    CONFLICTING) printf 'needs-rework\n' ;;
+    *) printf 'wait\n' ;;      # UNKNOWN (still computing) or unrecognized: don't misroute
+  esac
+}
+
 # Read a PR head-ref name on stdin (e.g. "issue-42", "prd-7") and emit the
 # trailing issue/parent number it was branched for, or nothing for an
 # unrecognized or non-numeric shape. issue-<N> sub-issue PRs and prd-<parent>

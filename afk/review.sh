@@ -11,13 +11,18 @@
 #                                 VERDICT (mergeable | needs-human | needs-rework).
 #                                 Returns non-zero so the loop can skip the act
 #                                 step on a failed agent run.
-#   Step 3  review_act_verdict   act on the verdict via review_verdict_action:
-#                                 merge after CI green, ready-for-human, or send
-#                                 back to ready-for-agent (two-strike guarded).
+#   Step 3  review_act_verdict   act on the verdict. Two pre-merge gates run in
+#                                 order on a mergeable verdict: mergeability
+#                                 (review_mergeability_gate: auto-rebase a
+#                                 BEHIND branch, route CONFLICTING to the
+#                                 producer, or wait on UNKNOWN) then CI-green;
+#                                 then review_verdict_action dispatches merge /
+#                                 ready-for-human / send-back (two-strike guarded).
 #
-# Side effects — label transitions and `gh pr merge` — live in Step 3's control
-# layer; the review agent only judges (ADR-0006). The entry sources afk/lib/
-# (shared with afk/implement.sh) and the review phase functions in afk/steps/;
+# Side effects — label transitions, the mergeability gate's branch rebase, and
+# `gh pr merge` — live in Step 3's control layer; the review agent only judges
+# (ADR-0006). The entry sources afk/lib/ (shared with afk/implement.sh) and the
+# review phase functions in afk/steps/;
 # state crossing phase boundaries (PR_NUM, HEAD_REF, N, ROUND, VERDICT) is
 # carried in shell globals.
 #
