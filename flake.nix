@@ -33,6 +33,10 @@
             gnutar
             gzip
             gnused
+            # Process and pager tools used while developing / observing AFK runs
+            procps           # ps, watch, top, free, pgrep, ...
+            util-linux       # more, lsblk, ...
+            less             # pager (PAGER=less)
             curl
             gitMinimal
             # gh is intentionally NOT provided by Nix so it can be upgraded
