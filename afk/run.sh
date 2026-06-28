@@ -80,6 +80,7 @@ for ((i=1; i<=$1; i++)); do
     if [ "$all_closed" = "true" ] \
        && ! gh pr list --state open --head "prd-$P" --json number | grep -q '"number"'; then
       git show-ref --verify --quiet "refs/heads/prd-$P" || git branch "prd-$P" main
+      git push origin "prd-$P" >/dev/null 2>&1 || true
       pr_url=$(gh pr create --base main --head "prd-$P" \
         --title "PRD #$P: all sub-issues merged" \
         --body "Closes #$P" 2>/dev/null || true)
@@ -141,6 +142,9 @@ Reply with ONLY the issue number (e.g. 42). If nothing is grabbable, reply NONE.
   if [ -n "$parent" ]; then
     BASE="prd-$parent"
     git show-ref --verify --quiet "refs/heads/$BASE" || git branch "$BASE" main
+    # The PR base must exist on the remote, or gh pr create fails
+    # ("Base ref must be a branch"). Push is idempotent.
+    git push origin "$BASE" >/dev/null 2>&1 || true
     echo "Issue #$N is a sub-issue of #$parent -> PR base $BASE"
   else
     BASE="main"
