@@ -7,5 +7,7 @@ fn test_help_shows_options() {
         .assert()
         .success()
         .stdout(predicates::str::contains("--model"))
-        .stdout(predicates::str::contains("--url"));
+        .stdout(predicates::str::contains("--url"))
+        .stdout(predicates::str::contains("--skills-dir"))
+        .stdout(predicates::str::contains("--log"));
 }

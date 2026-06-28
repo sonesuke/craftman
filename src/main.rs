@@ -23,7 +23,7 @@ struct Cli {
     #[arg(long, default_value = "./skills")]
     skills_dir: PathBuf,
 
-    /// Log all LLM request/response JSON to this file (JSONL format)
+    /// Log structured harness events to this file (JSONL format)
     #[arg(long)]
     log: Option<PathBuf>,
 }
