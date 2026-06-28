@@ -15,3 +15,20 @@ jobs:
           cache: true
       - run: mise run pre-commit
       - run: mise run test-e2e
+
+  # The AFK loop's pure-function seam (afk/lib/, tested by afk/tests/). Kept out
+  # of mise run pre-commit so the local developer loop stays Rust-only and fast;
+  # CI runs it on every PR to main so the seam cannot silently rot.
+  # See ADR-0005 and docs/agents/workflow.md.
+  afk-pure-tests:
+    name: AFK pure-function tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run afk/ pure-function tests
+        run: |
+          for t in afk/tests/*.sh; do
+            echo "::group::afk test: $t"
+            bash "$t"
+            echo "::endgroup::"
+          done
