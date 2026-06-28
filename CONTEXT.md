@@ -1,6 +1,6 @@
 # craftman
 
-**craftman is a reference implementation** of a local-LLM CLI assistant that surfaces **skills** relevant to each user turn via per-turn **skill retrieval**, and exposes executable **tools** as function calls. Skills conform to the [Agent Skills](https://agentskills.io/specification) standard. This file pins down the project's domain language; it is a glossary only, free of implementation detail.
+**craftman is a reference implementation** — a working sample of its design pattern (the Skill/Tool split, per-turn skill retrieval, and the [Agent Skills](https://agentskills.io/specification) standard), not a low-maturity product — of a local-LLM CLI assistant that surfaces **skills** relevant to each user turn via per-turn **skill retrieval**, and exposes executable **tools** as function calls. This file pins down the project's domain language; it is a glossary only, free of implementation detail.
 
 ## Language
 
