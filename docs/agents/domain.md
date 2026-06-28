@@ -6,6 +6,7 @@ How the engineering skills should consume this repo's domain documentation when 
 
 - **`CONTEXT.md`** at the repo root, or
 - **`CONTEXT-MAP.md`** at the repo root if it exists — it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
+- **`docs/architecture.md`** — the repo's structure doc: the current file tree, layer dependencies, and the Harness/EventSink runtime. Read it when you need to navigate the code rather than reverse-engineer it. (In multi-context repos, check `src/<context>/docs/architecture.md` too.)
 - **`docs/adr/`** — read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
 - **`docs/agents/workflow.md`** — the AFK development-process glossary (how this repo is built: PRDs, sub-issues, slices, the AFK implementation and review loops). This is *process* language, separate from the product-domain language in `CONTEXT.md`. See also `issue-tracker.md` and `triage-labels.md` in the same directory.
 
