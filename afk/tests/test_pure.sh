@@ -7,6 +7,8 @@
 #   drop_with_open_pr:  drop candidates whose issue-<N> branch already has an
 #                       open PR (in OPEN_PRS).
 #   pr_url_to_number:   extract the trailing numeric PR number from a PR URL.
+#   worktree_path_for_branch:  resolve a branch name to its worktree path from
+#                              `git worktree list --porcelain` output.
 #
 # To add a pure helper: source afk/lib/pure.sh, feed it canned input, and assert
 # the survivors via expect_eq (the single comparison primitive below).
@@ -55,6 +57,14 @@ check_prune() {
 check_pr_url() {
   local name="$1" url="$2" expected="$3"
   expect_eq "$name" "$expected" "$(printf '%s' "$url" | pr_url_to_number)"
+}
+
+# worktree_path_for_branch: `git worktree list --porcelain` on stdin,
+# WORKTREE_BRANCH in env, worktree path on stdout.
+check_worktree() {
+  local name="$1" branch="$2" input="$3" expected="$4"
+  expect_eq "$name" "$expected" \
+    "$(printf '%s' "$input" | WORKTREE_BRANCH="$branch" worktree_path_for_branch)"
 }
 
 # --- filter_grabbable --------------------------------------------------------
@@ -133,6 +143,36 @@ check_pr_url "extracts the number from another repo's pull URL" \
 
 check_pr_url "takes the trailing number when earlier segments also have digits" \
   "https://github.com/o1/r2/pull/123" "123"
+
+# --- worktree_path_for_branch -------------------------------------------------
+# `git worktree list --porcelain` on stdin; blank-line-separated stanzas, each a
+# `worktree <path>` + `branch refs/heads/<name>` pair. Mirrors the real layout
+# craftman's worktrunk produces (/workspaces/craftman.issue-<N>).
+read -r -d '' WT_PORCELAIN <<'PORCELAIN' || true
+worktree /workspaces/craftman
+HEAD 68a29995ecd58786ad404584010fe934b3c94bb5
+branch refs/heads/main
+
+worktree /workspaces/craftman.issue-16
+HEAD da2fc9719589659c3b2fec6444fe01240ae823fa
+branch refs/heads/issue-16
+
+worktree /workspaces/craftman.issue-33
+HEAD 1a82f9d30fb1447d04a3fcf057aeb604bf5bb973
+branch refs/heads/issue-33
+PORCELAIN
+
+check_worktree "finds the path for an issue branch" \
+  "issue-33" "$WT_PORCELAIN" "/workspaces/craftman.issue-33"
+
+check_worktree "finds the path for main" \
+  "main" "$WT_PORCELAIN" "/workspaces/craftman"
+
+check_worktree "returns nothing for a branch with no worktree" \
+  "issue-99" "$WT_PORCELAIN" ""
+
+check_worktree "returns nothing when WORKTREE_BRANCH is empty" \
+  "" "$WT_PORCELAIN" ""
 
 echo
 echo "passed=$pass failed=$fail"

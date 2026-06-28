@@ -42,3 +42,36 @@ drop_with_open_pr() {
 pr_url_to_number() {
   grep -oE '[0-9]+' | tail -1
 }
+
+# Read `git worktree list --porcelain` output on stdin; emit the filesystem
+# path of the worktree checked out on the branch named in WORKTREE_BRANCH
+# (e.g. "issue-33"), or nothing if no worktree matches. Porcelain output is a
+# sequence of blank-line-separated stanzas, each holding a `worktree <path>`
+# line and a `branch refs/heads/<name>` line. Pure (no git I/O inside) — the
+# caller pipes `git worktree list --porcelain` in, so this stays in the
+# unit-tested seam. Used by step3 to find where the producer agent wrote
+# .afk/pr_title and .afk/pr_body.
+worktree_path_for_branch() {
+  local branch="${WORKTREE_BRANCH:-}" wt="" br="" line
+  # `|| [ -n "$line" ]` so the final line is processed even when the input has
+  # no trailing newline (read returns non-zero at EOF but still sets $line).
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "worktree "*) wt="${line#worktree }" ;;
+      "branch "*)
+        br="${line#branch }"
+        br="${br#refs/heads/}"
+        ;;
+      "")
+        if [ "$br" = "$branch" ] && [ -n "$wt" ]; then
+          printf '%s\n' "$wt"; return 0
+        fi
+        wt=""; br=""
+        ;;
+    esac
+  done
+  # Last stanza (no trailing blank line) — flush it too.
+  if [ "$br" = "$branch" ] && [ -n "$wt" ]; then
+    printf '%s\n' "$wt"
+  fi
+}
